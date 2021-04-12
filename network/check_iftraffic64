@@ -66,7 +66,7 @@
 #			Thanks to Mark Rittinghaus <rittinghaus.mark (at) lumberg.com> for pointing this out and recommending a fix.
 #	* 05_13_2016 Changed perf data for absolute Bytes ($in_bytes_abs/$in_bytes_abs) from Bytes units to 'c' for continuous
 #			Thanks to Mark Rittinghaus <rittinghaus.mark (at) lumberg.com> for suggesting this change.
-#	* 04_12_2021 Fixed help: added --username
+#	* 04_12_2021 Fixed help: added --username, fixed tmp-path
 #
 # Send us bug reports, questions and comments about this plugin.
 # Latest version of this software: http://exchange.nagios.org
