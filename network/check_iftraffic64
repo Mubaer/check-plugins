@@ -29,9 +29,9 @@
 # minor (gj):
 # 
 #	* fixed the performance data, formating was not to spec
-# 	* Added a check of the interfaces status (up/down).
+#	* Added a check of the interfaces status (up/down).
 #	  If interface is down the check returns a critical status.
-# 	* Support both textual or the numeric index values.
+#	* Support both textual or the numeric index values.
 #	* If the interface speed is not specified on the command line
 #	  it gets it automatically from IfHighSpeed (or ifSpeed if IfHighSpeed
 #	  counter is not available)
@@ -58,14 +58,14 @@
 #	* 12_10_2014 Fixed issue when using string description for interface printing extra line with interface name and OID
 #	* 07_06_2015 Added SNMP v3 support, base code provided by Rogerio Tomassoni de Araujo Junio <rogerio.tomassoni (at) cnpem.br>
 #	* 12_02_2015 Set the inbandwidth and outbandwidth of the perfdata to a fixed base unit (bits or Bytes depending on switches used).
-#	* 	     Thanks to Philip Ho <pcbho (at) hku.hk> and Fai Wong <fai.wong (at) masterson-tech.com> for pointing this out. 
+#			Thanks to Philip Ho <pcbho (at) hku.hk> and Fai Wong <fai.wong (at) masterson-tech.com> for pointing this out. 
 #	* 12_08_2015 Fixed 'Return code of 25 is out of bounds' errors with an internal timeout setting.  Thanks to Philip Ho
-#		     <pcbho (at) hku.hk> for directing me to the underlying problem
-# 		     based on check_traffic from Adrian Wieczorek, <ads (at) irc.pila.pl>
+#			<pcbho (at) hku.hk> for directing me to the underlying problem
+#			based on check_traffic from Adrian Wieczorek, <ads (at) irc.pila.pl>
 #	* 05_13_2016 Changed perf data for in_ave and out_ave to always be in Bytes (no Bits allowed) to align with perf data output rules
-#		     Thanks to Mark Rittinghaus <rittinghaus.mark (at) lumberg.com> for pointing this out and recommending a fix.
+#			Thanks to Mark Rittinghaus <rittinghaus.mark (at) lumberg.com> for pointing this out and recommending a fix.
 #	* 05_13_2016 Changed perf data for absolute Bytes ($in_bytes_abs/$in_bytes_abs) from Bytes units to 'c' for continuous
-#		     Thanks to Mark Rittinghaus <rittinghaus.mark (at) lumberg.com> for suggesting this change.
+#			Thanks to Mark Rittinghaus <rittinghaus.mark (at) lumberg.com> for suggesting this change.
 #	* 04_12_2021 Fixed help: added --username
 #
 # Send us bug reports, questions and comments about this plugin.
