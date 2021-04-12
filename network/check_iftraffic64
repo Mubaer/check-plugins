@@ -138,7 +138,7 @@ my $snmpIPAdEntIfIndex 	= '1.3.6.1.2.1.4.20.1.2'; 	# Index of interface using ho
 
 
 # Path to  tmp files
-my $TRAFFIC_FILE = "/usr/local/nagios/libexec/traffic/";
+my $TRAFFIC_FILE = "/var/tmp/check-plugins/";
 
 # Create tmp file location if it does not exist
 if ( ! -d $TRAFFIC_FILE ) {
