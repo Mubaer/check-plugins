@@ -3,7 +3,7 @@
 # check_iftraffic.pl - Nagios(r) network traffic monitor plugin
 # Copyright (C) 2004 Gerd Mueller / Netways GmbH
 # $Id: check_iftraffic.pl 1119 2006-02-09 10:30:09Z gmueller $
-# Version: .76
+# Version: .77
 #
 # mw = Markus Werner mw+nagios@wobcom.de
 # Remarks (mw):
@@ -66,6 +66,7 @@
 #		     Thanks to Mark Rittinghaus <rittinghaus.mark (at) lumberg.com> for pointing this out and recommending a fix.
 #	* 05_13_2016 Changed perf data for absolute Bytes ($in_bytes_abs/$in_bytes_abs) from Bytes units to 'c' for continuous
 #		     Thanks to Mark Rittinghaus <rittinghaus.mark (at) lumberg.com> for suggesting this change.
+#	* 04_12_2021 Fixed help: added --username
 #
 # Send us bug reports, questions and comments about this plugin.
 # Latest version of this software: http://exchange.nagios.org
@@ -1106,6 +1107,8 @@ sub print_usage {
     -v, --Version STRING
 	Set SNMP version (defaults to 2).  Version 2 or 3 required for 64 bit counters.
 
+    --user, --username
+	Set v3 securityName
     --authpassword STRING
 	Set v3 authorization password.
     --authprotocol STRING
