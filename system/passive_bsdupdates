@@ -1,0 +1,25 @@
+#!/bin/sh
+
+crf=/var/tmp/chk_psv_bsdupdates
+maxage=7
+
+
+if test `find $crf -mtime -$maxage 2>/dev/null`  ; then
+    if test `grep OK $crf` ; then
+        state=OK ; ecode=0
+        msg='updates were fetched and no updates to install' 
+    elif [ `grep WARNING $crf` ] ; then
+        state=WARNING ; ecode=1
+        msg='threre are system updates ready to install'
+    else
+        state=UNKNOWN ; ecode=3
+        msg="can not interpret content of $crf, pls. check manually"
+    fi
+else 
+    state=UNKNOWN
+    ecode=3
+    msg="check result file '$crf' does not exist or is older than $maxage days"
+fi
+
+echo "($state) $msg"
+exit $ecode
