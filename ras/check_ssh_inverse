@@ -1,0 +1,19 @@
+#!/bin/sh
+args=$@
+check_ssh=/usr/local/libexec/nagios/check_ssh
+
+rc=3
+out=$( $check_ssh $args )
+rc=$?
+
+if [ $rc -ne 0 ] ; then
+    ecode=0
+    text='(OK) No new, unconfigured satellite connected.'
+else 
+    ecode=2
+    text='(CRITICAL) A new, to be configured satellite is connected!'
+fi
+
+echo $text
+echo "$out"
+exit $ecode
