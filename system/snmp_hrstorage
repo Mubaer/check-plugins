@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+
+# This check inspects the hrStorage MIB. Although it was written for checking
+# a "Sophos UTM", it can be used universally. Only the memory calculation may
+# not work for other systems.
+
+declare -A snmpData
+declare -A id
+declare -A nameMap
+
+hrStorage='.1.3.6.1.2.1.25.2.3.1'
+id[index]=1
+id[name]=3
+id[bsize]=4
+id[size]=5
+id[used]=6
+
+# CLI Parsing
+mode=$1
+mode=${mode:=elements}
+filter=$2
+filter=${filter:=.}
+
+snmpcmd='snmpbulkwalk -Onq  -v3 -u mrmonitoring -xAES 
+	-X f81CDO52q -l authPriv -a SHA -A f81CDO52q
+	192.168.100.254  .1.3.6.1.2.1.25.2.3.1 '
+
+
+# First of all, get the SNMP-Data
+snmpResponse=$($snmpcmd 2>&1)
+snmpexit=$?
+
+if [ $snmpexit -ne 0 ] ; then
+	echo "(UNKNOWN): Problem fetching SNMP data."
+	echo 
+	echo "SNMP Output was: $snmpResponse"
+	exit 3
+fi
+
+
+while read oid value unit
+do 
+	snmpData[$oid]="$value"
+done <<< "$snmpResponse"
+
+#### building indexes
+#
+# build element index
+#
+for key in ${!snmpData[@]} ; do
+	if [[ $key == "$hrStorage.${id[index]}"* ]] ; then
+		elementIndex+=( ${snmpData[$key]} )
+	fi
+done
+
+#
+# build name map
+#
+for element in  ${elementIndex[@]}
+do
+	nameMap[${snmpData[${hrStorage}.${id[name]}.$element]}]=${snmpData[${hrStorage}.${id[index]}.$element]}
+done
+
+#
+#### end of building indexes
+
+for eName in ${!nameMap[@]}
+do
+	element=${nameMap[$eName]}
+done
+
+
+function output_byfilter() {
+
+# Print Out Data for Elements, filtered by Name
+# By default, select all elements
+local filter=$1
+
+for eName in ${!nameMap[@]}
+do
+	if [[  "$eName" =~ $filter ]]
+	then
+		outElements+=(${nameMap[$eName]})
+	fi
+done
+
+for element in  ${outElements[@]}
+do
+	name=${snmpData[${hrStorage}.${id[name]}.$element]}
+	size_bytes=$(( \
+		${snmpData[${hrStorage}.${id[size]}.$element]} * \
+		${snmpData[${hrStorage}.${id[bsize]}.$element]} ))
+	used_bytes=$(( \
+		${snmpData[${hrStorage}.${id[used]}.$element]} * \
+		${snmpData[${hrStorage}.${id[bsize]}.$element]} ))
+	
+	echo "Storage $name "
+	echo "	Size: $size_bytes bytes, $(( $size_bytes>>20 )) MBytes"
+	echo "	Used: $used_bytes bytes, $(( $used_bytes>>20 )) MBytes"
+	percent=$( bc -l <<< "scale=4; r( ($used_bytes / $size_bytes * 100), 2 )" )
+	echo "	Percent used: $percent"%
+	echo 
+done
+}
+
+function percent() {
+	local total=$1
+	local part=$2
+	bc -l <<< "scale=4; r( ($part / $total * 100), 2 )"
+}
+
+
+function memory_sophos_utm() {
+
+	# Memory calculation
+	# Usually, the amount of 'used' memory (RAM) is calculated this way:
+	# 	Phys.RAM(installed) - shared(used) - cache(used)
+
+	# save data into handy variables
+	local phys_size=$(( \
+		${snmpData[${hrStorage}.${id[size]}.${nameMap[Physical]}]}*\
+		${snmpData[${hrStorage}.${id[bsize]}.${nameMap[Physical]}]} ))
+	#local mem_used=$(( \
+	#	${snmpData[${hrStorage}.${id[used]}.${nameMap[Memory]}]}*\
+	#	${snmpData[${hrStorage}.${id[bsize]}.${nameMap[Memory]}]} ))
+	local shared_used=$(( \
+		${snmpData[${hrStorage}.${id[used]}.${nameMap[Shared]}]}*\
+		${snmpData[${hrStorage}.${id[bsize]}.${nameMap[Shared]}]} ))
+	local cached_used=$(( \
+		${snmpData[${hrStorage}.${id[used]}.${nameMap[Cached]}]}*\
+		${snmpData[${hrStorage}.${id[bsize]}.${nameMap[Cached]}]} ))
+
+	# Calculate used amount:
+	local ram_used=$(( $phys_size - $shared_used - $cached_used ))
+	local ram_used_rel=$( percent $phys_size $ram_used )
+	echo "Memory $ram_used of $phys_size used (${ram_used_rel}%)"
+	}
+
+
+#
+# MAIN
+#
+
+if [ $mode == "elements" ] ;then
+	output_byfilter $filter
+elif [ $mode == "memory" ] ;then
+	memory_sophos_utm
+fi
+
