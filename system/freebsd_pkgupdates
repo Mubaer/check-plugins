@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+
+#
+# Checks FreeBSD PKGs:
+#    - how many packages are ready for update
+#    - how many packages have vulnerabilities
+#    - number of packages 'locked'
+#
+# IMPORTANT: This check only works if 'pkg update' is run regularly.
+# Because this requires root permissions, this check is not doing this
+# automatically. Nevertheless, it checks if 'pkg update' has not run
+# for <db-age> days and warns if the pkg-db is too old.
+#
+# Parameters:
+#    <warn> <crit>: Return warning / critical if there are at least
+#                   <warn> / <crit> packages ready for update
+#    <db-age>:      Warn if db-age has not changed for <db-age> days
+#
+# Usage: freebsd_pkgupdates [<warn> <crit> <db-age>]
+#       Example: $ freebsd_pkgupdates 10 30 3
+#                $ freebsd_pkgupdates    # (use defaults)
+#
+
+pkg_maxw=${1:-10}
+pkg_maxc=${2:-30}
+age=${3:-4}
+
+# Default pkg-db path
+pkgdb=/var/db/pkg
+
+stattxt[0]='OK'
+stattxt[1]='WARNING'
+stattxt[2]='CRITICAL'
+stattxt[3]='UNKNOWN'
+STATUS=0
+# Pretty output: Description witdth
+descw=7
+
+
+update_status() {
+    local newstat=$1
+    if [ $newstat -gt $STATUS ] ; then
+        STATUS=$newstat
+    fi
+}
+
+# compare and return status value 
+statcmp() {
+    local val=$1; local warn=$2; local crit=$3; local stat=3
+    if [ $val -ge $crit ] ; then
+        stat=2
+    elif [ $val -ge $warn ] ; then
+        stat=1
+    else
+        stat=0
+    fi
+    echo $stat
+}
+
+pkg_toupdate() {
+    # OK, pkg update ran
+    local pkg_needupdate=$(pkg version -q -R -l '<' | cut -w -f1)
+    if [ -z $pkg_needupdate ] ; then
+        PKG_NUM_UPD=0
+    else
+        PKG_NUM_UPD=$(echo "$pkg_needupdate" | wc -l | tr -d ' ')
+    fi
+    local stat=`statcmp $PKG_NUM_UPD $pkg_maxw $pkg_maxc`
+    update_status $stat
+    TXT_PKG=$(printf "%-${descw}s: %s\n" 'Updates' "$PKG_NUM_UPD packages ready for update.")
+}
+
+pkg_audit() {
+    local pkg_vuln=$(pkg audit )
+    NUM_VUL=$(echo "$pkg_vuln" | tail -1 | cut -w -f1 )
+    PKG_NUM_VUL=$(echo "$pkg_vuln" | tail -1 | cut -w -f4 )
+    if  [ $NUM_VUL -gt 0 ] ; then
+    TXT_AUDIT=$(printf "%-${descw}s: %s\n" 'Vuln.' "$PKG_NUM_VUL packages have $NUM_VUL vulnerabilities.")
+        update_status 2
+    fi
+}
+
+pkg_locked() {
+    local pkg_locked=$(pkg lock -lq)
+    NUM_LOCKED=$(echo "$pkg_locked" | wc -l | cut -w -f2)
+    TXT_LCK=$(printf "%-${descw}s: %s\n" 'Locked' "$NUM_LOCKED are locked (and probably updatable).")
+}
+
+files=`find $pkgdb/local.sqlite -ctime +$age`
+
+if [ -z "$files" ]  ; then
+    pkg_toupdate
+    pkg_locked
+    pkg_audit
+    TXT="PKG updatable: $PKG_NUM_UPD, PKG locked: $NUM_LOCKED, PKG vuln.: $PKG_NUM_VUL, #Vuln.: $NUM_VUL" 
+else
+    TXT="Files in $pkgdb are out of date! (> $age days)"
+    update_status 1
+fi
+
+
+echo "(${stattxt[$STATUS]}): $TXT"
+if [ -n "$TXT_PKG" ] ;   then echo -e "\n$TXT_PKG"  ;fi
+if [ -n "$TXT_LCK" ] ;   then echo "$TXT_LCK" ; fi
+if [ -n "$TXT_AUDIT" ] ; then echo "$TXT_AUDIT" ; fi
+exit $STATUS
