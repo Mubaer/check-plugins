@@ -60,7 +60,7 @@ statcmp() {
 pkg_toupdate() {
     # OK, pkg update ran
     local pkg_needupdate=$(pkg version -q -R -l '<' | cut -w -f1)
-    if [ -z $pkg_needupdate ] ; then
+    if [ -z "$pkg_needupdate" ] ; then
         PKG_NUM_UPD=0
     else
         PKG_NUM_UPD=$(echo "$pkg_needupdate" | wc -l | tr -d ' ')
