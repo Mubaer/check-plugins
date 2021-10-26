@@ -4,6 +4,7 @@
 # a "Sophos UTM", it can be used universally. Only the memory calculation may
 # not work for other systems.
 
+# Define Vars
 declare -A snmpData
 declare -A id
 declare -A nameMap
@@ -15,15 +16,47 @@ id[bsize]=4
 id[size]=5
 id[used]=6
 
+#
 # CLI Parsing
-mode=$1
+#
+
+OPTERR=1
+while getopts "h:C:u:x:X:a:A:l:m:f:B" OPTION ; do
+	case "${OPTION}" in
+		h) hostname=${OPTARG}	;;
+		C) community=${OPTARG}	;;
+		u) authuser=${OPTARG}	;;
+		a) authproto=${OPTARG}	;;
+		A) authpass=${OPTARG}	;;
+		x) privproto=${OPTARG}	;;
+		X) privpass=${OPTARG}	;;
+		l) seclevel=${OPTARG}	;;
+		m) mode=${OPTARG}	;;
+		f) filter=${OPTARG}	;;
+		B) nobulk=1		;;
+	esac
+done
+
+if [ -n "$authuser" ] ; then
+	snmpv=3
+else
+	snmpv=2c
+fi
+
 mode=${mode:=elements}
-filter=$2
 filter=${filter:=.}
 
-snmpcmd='snmpbulkwalk -Onq  -v3 -u mrmonitoring -xAES 
-	-X x -l authPriv -a SHA -A a
-	192.168.100.254  .1.3.6.1.2.1.25.2.3.1 '
+#
+# Compose snmp command
+#
+if [ "$nobulk" ] ; then
+	walk=snmpwalk
+else
+	walk=snmpbulkwalk
+fi
+
+snmpcmd="$walk -Onq  -v3 -u $authuser -x $privproto -X $privpass -l $seclevel -a $authproto -A $authpass
+	$hostname  $hrStorage"
 
 
 # First of all, get the SNMP-Data
@@ -36,7 +69,6 @@ if [ $snmpexit -ne 0 ] ; then
 	echo "SNMP Output was: $snmpResponse"
 	exit 3
 fi
-
 
 while read oid value unit
 do 
