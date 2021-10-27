@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-# This check inspects the hrStorage MIB. Although it was written for checking
-# a "Sophos UTM", it can be used universally. Only the memory calculation may
-# not work for other systems.
+# This plugin inspects the hrStorage MIB. Although it was written for checking
+# a "Sophos UTM", it can be used universally. The memory calculation may not
+# be what you expect for other systems.
 
 # Define Vars
 declare -A snmpData
@@ -10,6 +10,7 @@ declare -A id
 declare -A nameMap
 
 hrStorage='.1.3.6.1.2.1.25.2.3.1'
+glob_rcode=0
 id[index]=1
 id[name]=3
 id[bsize]=4
@@ -21,42 +22,46 @@ id[used]=6
 #
 
 OPTERR=1
-while getopts "h:C:u:x:X:a:A:l:m:f:B" OPTION ; do
+while getopts "H:C:u:x:X:a:A:l:w:c:m:f:t:Bhd" OPTION ; do
 	case "${OPTION}" in
-		h) hostname=${OPTARG}	;;
-		C) community=${OPTARG}	;;
-		u) authuser=${OPTARG}	;;
-		a) authproto=${OPTARG}	;;
-		A) authpass=${OPTARG}	;;
-		x) privproto=${OPTARG}	;;
-		X) privpass=${OPTARG}	;;
-		l) seclevel=${OPTARG}	;;
-		m) mode=${OPTARG}	;;
-		f) filter=${OPTARG}	;;
-		B) nobulk=1		;;
+		H) hostname=${OPTARG}		;;
+		C) community="-c ${OPTARG}"	;;
+		u) authuser="-u ${OPTARG}"	;;
+		a) authproto="-a ${OPTARG}"	;;
+		A) authpass="-A ${OPTARG}"	;;
+		x) privproto="-x ${OPTARG}"	;;
+		X) privpass="-X ${OPTARG}"	;;
+		l) seclevel="-l ${OPTARG}"	;;
+		w) warn=${OPTARG}		;;
+		c) crit=${OPTARG}		;;
+		m) mode=${OPTARG}		;;
+		f) filter=${OPTARG}		;;
+		t) tout=${OPTARG}		;;
+		B) nobulk=1			;;
+		h) helpme=1			;;
+		d) debug=1		;;
 	esac
 done
 
-if [ -n "$authuser" ] ; then
-	snmpv=3
-else
-	snmpv=2c
-fi
 
+#
+# set default values
+#
 mode=${mode:=elements}
 filter=${filter:=.}
+tout=${tout:=20}
 
 #
 # Compose snmp command
 #
-if [ "$nobulk" ] ; then
-	walk=snmpwalk
-else
-	walk=snmpbulkwalk
-fi
+if [ "$nobulk" ]; then walk=snmpwalk;  else walk=snmpbulkwalk; fi
+if [ -n "$authuser" ]; then snmpv=3; else snmpv=2c; fi
 
-snmpcmd="$walk -Onq  -v3 -u $authuser -x $privproto -X $privpass -l $seclevel -a $authproto -A $authpass
+snmpcmd="$walk -Onq -v $snmpv -t $tout -r 3 \
+	$community $authuser $privproto $privpass $seclevel $authproto $authpass \
 	$hostname  $hrStorage"
+
+if [ -n "$debug" ] ; then echo "debug: $snmpcmd" ; fi
 
 
 # First of all, get the SNMP-Data
@@ -77,73 +82,148 @@ done <<< "$snmpResponse"
 
 #### building indexes
 #
+
 # build element index
-#
 for key in ${!snmpData[@]} ; do
 	if [[ $key == "$hrStorage.${id[index]}"* ]] ; then
 		elementIndex+=( ${snmpData[$key]} )
 	fi
 done
 
-#
 # build name map
-#
 for element in  ${elementIndex[@]}
 do
 	nameMap[${snmpData[${hrStorage}.${id[name]}.$element]}]=${snmpData[${hrStorage}.${id[index]}.$element]}
 done
 
-#
-#### end of building indexes
-
+# build element map
 for eName in ${!nameMap[@]}
 do
 	element=${nameMap[$eName]}
 done
 
+#
+#
+#### / building indexes
 
-function output_byfilter() {
-
-# Print Out Data for Elements, filtered by Name
-# By default, select all elements
-local filter=$1
-
-for eName in ${!nameMap[@]}
-do
-	if [[  "$eName" =~ $filter ]]
-	then
-		outElements+=(${nameMap[$eName]})
-	fi
-done
-
-for element in  ${outElements[@]}
-do
-	name=${snmpData[${hrStorage}.${id[name]}.$element]}
-	size_bytes=$(( \
-		${snmpData[${hrStorage}.${id[size]}.$element]} * \
-		${snmpData[${hrStorage}.${id[bsize]}.$element]} ))
-	used_bytes=$(( \
-		${snmpData[${hrStorage}.${id[used]}.$element]} * \
-		${snmpData[${hrStorage}.${id[bsize]}.$element]} ))
-	
-	echo "Storage $name "
-	echo "	Size: $size_bytes bytes, $(( $size_bytes>>20 )) MBytes"
-	echo "	Used: $used_bytes bytes, $(( $used_bytes>>20 )) MBytes"
-	percent=$( bc -l <<< "scale=4; r( ($used_bytes / $size_bytes * 100), 2 )" )
-	echo "	Percent used: $percent"%
-	echo 
-done
-}
+#######
+# Functions
+#######
 
 function percent() {
 	local total=$1
 	local part=$2
-	bc -l <<< "scale=4; r( ($part / $total * 100), 2 )"
+	bc -l <<< "scale=4; r( ($part / $total * 100), 0 )"
+}
+
+function calc_state() {
+	local value=$1;local warn=$2;local crit=$3;local rcode
+
+	if [ $value -gt $crit ] ; then
+		rcode=2
+	elif [ $value -gt $warn ] ; then
+		rcode=1
+	else
+		rcode=0
+	fi
+	echo $rcode
+}
+
+# take into account the current global return code
+function calc_globalstate() {
+	local value=$1;local warn=$2;local crit=$3;local rcode
+
+	rcode=$( calc_state $value $warn $crit )
+
+	if [ $rcode -le $glob_rcode ] ; then
+		rcode=$glob_rcode
+	else
+		rcode=$rcode
+	fi
+	echo $rcode
+}
+
+function state_string() {
+	local rcode=$1
+	case $rcode in 
+		0) string='(OK):' ;;
+		1) string='(WARNING):' ;;
+		2) string='(CRITICAL):' ;;
+		3) string='(UNKNOWN):' ;;
+	esac
+	echo $string
+}
+
+# generate human readable bytes
+function hr_bytes() {
+	local rawbyte=$1
+	local bstr=Byte
+
+	# more than 10 TB
+	if [ $rawbyte -gt 10000000000000 ] ;then
+		hrbyte="$(( $rawbyte>>40 )) T$bstr"
+
+	# more than 10 GB
+	elif [ $rawbyte -gt 10000000000 ] ;then
+		hrbyte="$(( $rawbyte>>30 )) G$bstr"
+
+	# more than 10 MB
+	elif [ $rawbyte -gt 10000000 ] ;then
+		hrbyte="$(( $rawbyte>>20 )) M$bstr"
+	fi
+
+	echo $hrbyte
+}
+
+
+function output_byfilter() {
+	# Print Out Data for Elements, filtered by Name
+	# By default, select all elements
+
+	local filter=$1
+
+	for eName in ${!nameMap[@]}
+	do
+		if [[  "$eName" =~ $filter ]]
+		then
+			outElements+=(${nameMap[$eName]})
+		fi
+	done
+
+	local loop_rcode=0
+	local loop_state
+	outmsg+="[used/total] "
+	for element in  ${outElements[@]}
+	do
+		name=${snmpData[${hrStorage}.${id[name]}.$element]}
+		size_bytes=$(( \
+			${snmpData[${hrStorage}.${id[size]}.$element]} * \
+			${snmpData[${hrStorage}.${id[bsize]}.$element]} ))
+		used_bytes=$(( \
+			${snmpData[${hrStorage}.${id[used]}.$element]} * \
+			${snmpData[${hrStorage}.${id[bsize]}.$element]} ))
+		percent=$( percent $size_bytes $used_bytes )
+		
+		# Calc local return code / state text string
+		if [ -n "$warn" -a -n "$crit" ] ;then
+			loop_rcode=$( calc_state ${percent} $warn $crit )
+			loop_state=$( state_string $loop_rcode )
+
+			# Update global plugin return code
+			glob_rcode=$( calc_globalstate ${percent} $warn $crit )
+		fi
+
+		# text output
+		outmsg+="$name $(( used_bytes>>20 ))/$(( size_bytes>>20 )) MB (${percent}%); "
+		details+="$loop_state $name\n"
+		details+="	Size: $( hr_bytes $size_bytes )\n"
+		details+="	Used: $( hr_bytes $used_bytes ) (${percent}%)\n\n"
+		perfdata+="$name=${percent}%;$warn;$crit;0;100 "
+	done
 }
 
 
 function memory_sophos_utm() {
-
 	# Memory calculation
 	# Usually, the amount of 'used' memory (RAM) is calculated this way:
 	# 	Phys.RAM(installed) - shared(used) - cache(used)
@@ -165,17 +245,33 @@ function memory_sophos_utm() {
 	# Calculate used amount:
 	local ram_used=$(( $phys_size - $shared_used - $cached_used ))
 	local ram_used_rel=$( percent $phys_size $ram_used )
-	echo "Memory $ram_used of $phys_size used (${ram_used_rel}%)"
-	}
+
+	# Update (global) plugin return code
+	if [ -n "$warn" -a -n "$crit" ] ;then
+		glob_rcode=$( calc_state ${ram_used_rel} $warn $crit )
+	fi
+
+	# text output
+	outmsg+="Memory $(( ram_used>>20 ))/$(( phys_size>>20 )) MBytes used (${ram_used_rel}%)"
+	perfdata+="memory=${ram_used_rel}%;$warn;$crit;0;100"
+}
 
 
 #
 # MAIN
 #
 
-if [ $mode == "elements" ] ;then
-	output_byfilter $filter
-elif [ $mode == "memory" ] ;then
-	memory_sophos_utm
-fi
+case $mode in
+	elements)
+		output_byfilter $filter	;;
+	memory)
+		memory_sophos_utm	;;
+	*)
+		echo "(UNKNOWN): mode '-m $mode' not known" ; exit 3 ;;
+esac
 
+echo -en "$( state_string $glob_rcode ) $outmsg"
+if [ -n "$details" ] ; then echo -en "\n\n$details" ; fi
+echo "|$perfdata"
+
+exit $glob_rcode
