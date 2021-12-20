@@ -51,6 +51,15 @@ mode=${mode:=elements}
 filter=${filter:=.}
 tout=${tout:=20}
 
+# 
+# precission calculator 'bc' compat. check
+#
+if [ -x /usr/local/bin/bc ]; then 
+    bc=/usr/local/bin/bc
+elif [ -x /usr/bin/bc ] ; then
+    bc=/usr/bin/bc
+fi
+
 #
 # Compose snmp command
 #
@@ -113,7 +122,7 @@ done
 function percent() {
 	local total=$1
 	local part=$2
-	bc -l <<< "scale=4; r( ($part / $total * 100), 0 )"
+	$bc -l <<< "scale=4; r( ($part / $total * 100), 0 )"
 }
 
 function calc_state() {
