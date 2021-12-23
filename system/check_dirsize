@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+
+OPTERR=1
+while getopts "d:c:w:r:x" OPTION ; do
+    case "${OPTION}" in
+        d)  dir=$OPTARG      ;;
+        c)  crit=$OPTARG     ;;
+        w)  warn=$OPTARG     ;;
+        x)  notraverse='-x'  ;;
+        ?)  exit 3  ;;
+    esac
+done
+
+
+#
+# Check user input
+#
+if [[ $dir =~ [*?] ]] ; then
+    echo "(UNKNOWN) Sorry, wildcards are not allowed. Specify 1 directory."
+    exit 3
+fi
+
+size=$( du -sk $notraverse $dir | cut -f 1 )
+
+state=OK
+ecode=0
+
+if [ -n "$warn" ] ; then
+    if [ $size -gt "$warn" ] ; then
+        state=WARNING
+        ecode=1
+    fi
+fi
+
+if [ -n "$crit" ] ; then
+    if [ $size -gt "$crit" ] ; then
+        state=CRITICAL
+        ecode=2
+    fi
+fi
+
+echo "($state) Directory Size of '$dir' is $size KiB"
+exit $ecode
