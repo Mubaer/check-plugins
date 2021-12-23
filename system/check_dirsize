@@ -20,7 +20,17 @@ if [[ $dir =~ [*?] ]] ; then
     exit 3
 fi
 
-size=$( du -sk $notraverse $dir | cut -f 1 )
+dusize=$( du -sk $notraverse $dir 2>&1 )
+crc=$?
+if [ $crc -ne 0 ] ; then
+    echo -e "(UNKNOWN) command 'du' returned an error\n"
+    echo '------ du error output ------'
+    echo "$dusize"
+    echo '-----------------------------'
+    exit 3
+fi
+
+size=$( echo "$dusize" | cut -f 1 )
 
 state=OK
 ecode=0
