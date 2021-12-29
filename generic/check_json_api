@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+import requests
+import json
+import urllib3
+urllib3.disable_warnings()
+import logging
+import argparse
+import sys
+import jsonpath_ng
+#from jsonpath_ng import jsonpath, parse
+
+#
+# parse command line parameters
+#
+
+cli = argparse.ArgumentParser \
+    (description=' read and parse REST-API responses')
+
+cli.add_argument('-H', dest='host', required=True, \
+        help='<(hostname|ip)[:port]>')
+cli.add_argument('-i', action='store_true', \
+        help='insecure: use http instead of https' )
+cli.add_argument('-p',     dest='url_path',     help='API URL path', default='')
+cli.add_argument('--user', dest='user',         help='Username (basic auth)')
+cli.add_argument('--pass', dest='pw',           help='Password (basic auth)')
+cli.add_argument('--key',  dest='api_key',      help='API-Key (Bearer-Token)')
+cli.add_argument('-j',     dest='json_filter',  help='json filter expression')
+cli.add_argument('-d',     dest='value_description',  \
+    help='value description' )
+cli.add_argument('--version', action='version', version='%(prog)s 0.1')
+cli.add_argument('--debug', action='store_true')
+
+args = cli.parse_args()
+
+protocol='http' if args.i else 'https';
+#
+# select authentication method
+#
+if args.user:
+    if args.pw:
+        credentials=(args.user, args.pw)
+    else:
+        logging.error('found username but no password')
+        auth_method='basic'
+        sys.exit()
+elif args.api_key:
+    credentials=args.api_key
+    auth_method='api_key'
+else:
+    logging.error('no authentication credentials found')
+
+# compose URL and header
+url="{}://{}/{}".format( protocol, args.host, args.url_path )
+if args.debug: print(url)
+headers={'Accept': 'application/json'}
+
+# go!
+response = requests.get(url, verify = False, headers=headers, auth=credentials )
+
+#
+# check response for errors
+#
+if args.debug: print("--- http header ---\n{}\n".format(response.headers))
+if args.debug: print("--- http status-code\n{}\n".format(response.status_code))
+
+# did we get json, indeed?
+if not response.headers['Content-Type'].startswith('application/json'):
+    logging.error('(UNKNOWN) response is not in json format. Got {}'.format(response.headers['Content-Type']))
+    sys.exit()
+
+if response.status_code == 200:
+    jsondata = response.json()
+else:
+    print("error while REST-Request: {}".format( response.status_code) )
+    sys.exit()
+
+
+#
+# print out plain json response if no filter is set (-j)
+#
+if not args.json_filter:
+    # no filter, so just print out json response
+    print( json.dumps(jsondata, indent=4) )
+    #print("raw output:\n{}\n--------------".format( json.dumps(jsondata, indent=2) ))
+# otherwise, try to filter out the desired json-value
+else:
+    jparse = jsonpath_ng.parse( args.json_filter )
+
+    # for now, get only the first value of 'jsondata'
+    result=(jparse.find(jsondata)[0].value)
+
+    if args.value_description:
+        print('{}: {}'.format( args.value_description, result ) )
+    else:
+        print(result)
+    
+    # example for getting all values found. not using it ATM
+    #list_val = [ match.value for match in jparse.find(jsondata) ]
+    #print(list_val)
+
+
