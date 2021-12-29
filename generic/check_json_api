@@ -6,8 +6,7 @@ urllib3.disable_warnings()
 import logging
 import argparse
 import sys
-import jsonpath_ng
-#from jsonpath_ng import jsonpath, parse
+from jsonpath_rw import jsonpath, parse
 
 #
 # parse command line parameters
@@ -84,7 +83,7 @@ if not args.json_filter:
     #print("raw output:\n{}\n--------------".format( json.dumps(jsondata, indent=2) ))
 # otherwise, try to filter out the desired json-value
 else:
-    jparse = jsonpath_ng.parse( args.json_filter )
+    jparse = parse( args.json_filter )
 
     # for now, get only the first value of 'jsondata'
     result=(jparse.find(jsondata)[0].value)
