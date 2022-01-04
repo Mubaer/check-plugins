@@ -1,0 +1,17 @@
+#!/bin/sh
+
+result=3
+
+/usr/sbin/freebsd-update updatesready 2>&1 >/dev/null
+result=$?
+
+if [ $result -eq 2 ] ; then
+	status=OK
+elif [ $result -eq 0 ] ; then
+	status=WARNING
+else
+	status=UNKNOWN
+fi
+
+echo $status > /var/tmp/chk_psv_bsdupdates
+
