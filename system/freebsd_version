@@ -1,0 +1,17 @@
+#!/bin/sh
+
+installed=`freebsd-version -k`
+running=`freebsd-version -r`
+
+msg_start="Running: $running | Installed: $installed"
+
+if [ "installed" == "$running" ] ; then
+    echo -e "(OK): $msg_start"
+    exit 0
+else
+    echo -e "(WARN): $msg_start"
+
+    echo -e "\nRunning and installed kernel version differ, consider reboot."
+    exit 1
+fi
+
