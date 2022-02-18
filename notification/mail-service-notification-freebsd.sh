@@ -150,6 +150,12 @@ if [ -n "$ICINGAWEB2URL" ] ; then
 $ICINGAWEB2URL/monitoring/service/show?host=$(urlencode "$HOSTNAME")&service=$(urlencode "$SERVICENAME")"
 fi
 
+## Append parsable line for ticket-automation
+NOTIFICATION_MESSAGE="$NOTIFICATION_MESSAGE
+
+[Type:\"service\";Host:\"$HOSTNAME\";Service:\"$SERVICENAME\"]
+"
+
 ## Check whether verbose mode was enabled and log to syslog.
 if [ "$VERBOSE" = "true" ] ; then
   logger "$PROG sends $SUBJECT => $USEREMAIL"
