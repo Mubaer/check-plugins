@@ -34,7 +34,7 @@
 #>
 
 $PendingReboot = "(OK): No reboot required"
-$exitcode = 1
+$exitcode = 0
 
 #Check for Keys
 If ((Test-Path -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired") -eq $true)
