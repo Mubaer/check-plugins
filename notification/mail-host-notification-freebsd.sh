@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Icinga 2 | (c) 2012 Icinga GmbH | GPLv2+
 # Except of function urlencode which is Copyright (C) by Brian White (brian@aljex.com) used under MIT license
+# Modified and enhanced by m.sander@mr-daten.de 2022
 
 PROG="`basename $0`"
 ICINGA2HOST="`hostname`"
@@ -63,6 +64,21 @@ urlencode() {
   echo "$e"
 }
 
+getemoticon() {
+    local state=$1
+    case $state in
+        RECOVERY)
+            emo=':-)'   ;;
+        PROBLEM)
+            emo=':-('   ;;
+        ACKNOWLEDGEMENT)
+            emo=':-|'   ;;
+        *)  
+            emo=''      ;;
+    esac
+    echo "$emo"
+}
+
 ## Main
 while getopts 4:6::b:c:d:f:hi:l:n:o:r:s:t:v: opt
 do
@@ -105,15 +121,24 @@ done
 ## Build the message's subject
 SUBJECT="[$NOTIFICATIONTYPE] Host $HOSTDISPLAYNAME is $HOSTSTATE!"
 
+## Set emoticon for notificationtype
+emoti=`getemoticon $NOTIFICATIONTYPE`
+
 ## Build the notification message
 NOTIFICATION_MESSAGE=`cat << EOF
-***** Host Monitoring on $ICINGA2HOST *****
+--------------------------------------------------------------------
+
+                MR Datentechnik Monitoring System
+
+--------------------------------------------------------------------
+
+                -=   $emoti $NOTIFICATIONTYPE $emoti   =-
+
 
 $HOSTDISPLAYNAME is $HOSTSTATE!
 
 Info:    $HOSTOUTPUT
 
-When:    $LONGDATETIME
 Host:    $HOSTNAME
 EOF
 `
@@ -142,13 +167,22 @@ fi
 if [ -n "$ICINGAWEB2URL" ] ; then
   NOTIFICATION_MESSAGE="$NOTIFICATION_MESSAGE
 
+Link to IcingaWeb:
+------------------
 $ICINGAWEB2URL/monitoring/host/show?host=$(urlencode "$HOSTNAME")"
 fi
 
 ## Append parsable line for ticket-automation
 NOTIFICATION_MESSAGE="$NOTIFICATION_MESSAGE
 
+
+
+- - - - - - - technical details - - - - - - - - -
+This Notification was sent from $ICINGA2HOST
+at $LONGDATETIME
+
 [Type:\"host\";Host:\"$HOSTNAME\";Service:\"none\"]
+- - - - - - - - - - - - - - - - - - - - - - - - -
 "
 
 ## Check whether verbose mode was enabled and log to syslog.
