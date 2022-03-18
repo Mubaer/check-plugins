@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Icinga 2 | (c) 2012 Icinga GmbH | GPLv2+
 # Except of function urlencode which is Copyright (C) by Brian White (brian@aljex.com) used under MIT license
+# Modified and enhanced by m.sander@mr-daten.de 2022
 
 PROG="`basename $0`"
 ICINGA2HOST="`hostname`"
@@ -65,6 +66,37 @@ urlencode() {
   echo "$e"
 }
 
+getemoticon() {
+    local state=$1
+    case $state in
+        RECOVERY)
+            emo=':-)'   ;;
+        PROBLEM)
+            emo=':-('   ;;
+        ACKNOWLEDGEMENT)
+            emo=':-|'   ;;
+        *)  
+            emo=''      ;;
+    esac
+    echo "$emo"
+}
+
+
+center_string() {
+    local center_pos=$1
+    local string=$2
+    local c=0 buffer=''
+
+    local length=${#string}
+    local offset=$(( center_pos  - length / 2 ))
+    while [ $c -lt $offset ] ; do
+        buffer+=' '
+        : $(( c++ ))
+    done
+
+    echo "${buffer}$string"
+}
+
 ## Main
 while getopts 4:6:b:c:d:e:f:hi:l:n:o:r:s:t:u:v: opt
 do
@@ -109,31 +141,60 @@ done
 ## Build the message's subject
 SUBJECT="[$NOTIFICATIONTYPE] $SERVICEDISPLAYNAME on $HOSTDISPLAYNAME is $SERVICESTATE!"
 
-## Build the notification message
-NOTIFICATION_MESSAGE=`cat << EOF
-***** Service Monitoring on $ICINGA2HOST *****
 
-$SERVICEDISPLAYNAME on $HOSTDISPLAYNAME is $SERVICESTATE!
+## Build 'Host' string
 
-Info:    $SERVICEOUTPUT
-
-When:    $LONGDATETIME
-Service: $SERVICENAME
-Host:    $HOSTNAME
-EOF
-`
-
+host_message="$HOSTNAME"
 ## Check whether IPv4 was specified.
 if [ -n "$HOSTADDRESS" ] ; then
-  NOTIFICATION_MESSAGE="$NOTIFICATION_MESSAGE
-IPv4:    $HOSTADDRESS"
+  host_message="$host_message ($HOSTADDRESS)"
 fi
 
 ## Check whether IPv6 was specified.
 if [ -n "$HOSTADDRESS6" ] ; then
-  NOTIFICATION_MESSAGE="$NOTIFICATION_MESSAGE
-IPv6:    $HOSTADDRESS6"
+  host_message="$host_message ($HOSTADDRESS6)"
 fi
+
+## Define things for formating page
+## hline is the reference for page width and centered text
+hline='-----------------------------------------------------------------'
+## Dashed Version
+dline='- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -'
+hline_center=$(( ${#hline} / 2 ))
+
+## Set emoticon for notificationtype
+emoti=`getemoticon $NOTIFICATIONTYPE`
+
+## Preformat centered lines
+htext=`center_string $hline_center 'MR Datentechnik Monitoring System'`
+typeline=`center_string $hline_center "-=   $emoti $NOTIFICATIONTYPE $emoti   =-"`
+statusline=`center_string $hline_center "STATUS is **$SERVICESTATE**"`
+
+## Build the notification message
+NOTIFICATION_MESSAGE=`cat << EOF
+$hline
+
+$htext
+
+$hline
+
+$typeline
+
+$statusline
+
+HostObject: $host_message
+Hostname:   $HOSTDISPLAYNAME
+
+Service:    $SERVICEDISPLAYNAME ($SERVICENAME)
+
+
+Message-Details:
+----------------
+$SERVICEOUTPUT
+
+EOF
+`
+
 
 ## Check whether author and comment was specified.
 if [ -n "$NOTIFICATIONCOMMENT" ] ; then
@@ -147,13 +208,24 @@ fi
 if [ -n "$ICINGAWEB2URL" ] ; then
   NOTIFICATION_MESSAGE="$NOTIFICATION_MESSAGE
 
+
+Link to IcingaWeb:
+------------------
 $ICINGAWEB2URL/monitoring/service/show?host=$(urlencode "$HOSTNAME")&service=$(urlencode "$SERVICENAME")"
 fi
 
+h2text=`center_string $hline_center 'Technical Details'`
 ## Append parsable line for ticket-automation
 NOTIFICATION_MESSAGE="$NOTIFICATION_MESSAGE
 
+
+$h2text
+$dline
+This Notification was sent from $ICINGA2HOST
+at $LONGDATETIME
+
 [Type:\"service\";Host:\"$HOSTNAME\";Service:\"$SERVICENAME\"]
+$dline
 "
 
 ## Check whether verbose mode was enabled and log to syslog.
