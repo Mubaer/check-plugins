@@ -30,7 +30,7 @@ param([String[]]$exclusivejob, [String[]]$ignorejob, [Switch]$runtime, [Int]$run
 if ($exclusivejob -and $ignorejob) {
     Write-Host "(UNKNOWN) Don't use -exclusivejob and -ignorejob at the same time"
     $host.SetShouldExit(3)
-    exit 3
+    ;exit (3)
 }
 
 
@@ -39,8 +39,9 @@ $ExitCode = 0
 function Set-ExitCode {
     param ($code)
     if ($ExitCode -lt $code) {
-        Set-Variable -Name ExitCode -Value $code -Scope global
+        $ExitCode = $code
     }
+    return $ExitCode
 }
 
 #=== Add a temporary value from User to session ($Env:PSModulePath) ======
@@ -60,10 +61,10 @@ try {
     }catch{
     Write-Host "(UNKNOWN) Failed to import Veeam PS Module"
     $host.SetShouldExit(3)
-    exit 3
+    ;exit (3)
     }
 }
-$runtime = $true
+
 $OutputContent = "`n"
 $OutputCount_OK = 0
 $OutputCount_WARNING = 0
@@ -86,7 +87,7 @@ Foreach ($veeamjob in $veeamjobs) {
             $OutputContent += "(CRITICAL) Job: $veeam_jobname; Result: $veeam_result; State: $veeam_state; Scheduled: $veeam_schedule"
             $OutputContent += "`n"
             $OutputCount_CRITICAL = $OutputCount_CRITICAL + 1
-            Set-ExitCode -code 2
+            $ExitCode = Set-ExitCode -code 2
             if($runtime) {
                 $veeam_jobruntime = New-TimeSpan -Start $veeam_backupsessions[0].CreationTime -End $veeam_backupsessions[0].EndTime
                 if ($veeam_jobruntime.TotalMinutes -le $runtime_OK) {
@@ -98,13 +99,13 @@ Foreach ($veeamjob in $veeamjobs) {
                     $OutputContent += "(WARNING) Job ($veeam_jobname) last Runtime (D:H:M:S): $($veeam_jobruntime.Days):$($veeam_jobruntime.Hours):$($veeam_jobruntime.Minutes):$($veeam_jobruntime.Seconds)"
                     $OutputContent += "`n"
                     $OutputCount_WARNING = $OutputCount_WARNING + 1
-                    Set-ExitCode -code 1
+                    $ExitCode = Set-ExitCode -code 1
                 }
                 else {
                     $OutputContent += "(CRITICAL) Job ($veeam_jobname) last Runtime (D:H:M:S): $($veeam_jobruntime.Days):$($veeam_jobruntime.Hours):$($veeam_jobruntime.Minutes):$($veeam_jobruntime.Seconds)"
                     $OutputContent += "`n"
                     $OutputCount_CRITICAL = $OutputCount_CRITICAL + 1
-                    Set-ExitCode -code 2
+                    $ExitCode = Set-ExitCode -code 2
                 }
             }
         }
@@ -112,7 +113,7 @@ Foreach ($veeamjob in $veeamjobs) {
             $OutputContent += "(WARNING) Job: $veeam_jobname; Result: $veeam_result; State: $veeam_state; Scheduled: $veeam_schedule"
             $OutputContent += "`n"
             $OutputCount_WARNING = $OutputCount_WARNING + 1
-            Set-ExitCode -code 1
+            $ExitCode = Set-ExitCode -code 1
             if($runtime) {
                 $veeam_jobruntime = New-TimeSpan -Start $veeam_backupsessions[0].CreationTime -End $veeam_backupsessions[0].EndTime
                 if ($veeam_jobruntime.TotalMinutes -le $runtime_OK) {
@@ -124,13 +125,13 @@ Foreach ($veeamjob in $veeamjobs) {
                     $OutputContent += "(WARNING) Job ($veeam_jobname) last Runtime (D:H:M:S): $($veeam_jobruntime.Days):$($veeam_jobruntime.Hours):$($veeam_jobruntime.Minutes):$($veeam_jobruntime.Seconds)"
                     $OutputContent += "`n"
                     $OutputCount_WARNING = $OutputCount_WARNING + 1
-                    Set-ExitCode -code 1
+                    $ExitCode = Set-ExitCode -code 1
                 }
                 else {
                     $OutputContent += "(CRITICAL) Job ($veeam_jobname) last Runtime (D:H:M:S): $($veeam_jobruntime.Days):$($veeam_jobruntime.Hours):$($veeam_jobruntime.Minutes):$($veeam_jobruntime.Seconds)"
                     $OutputContent += "`n"
                     $OutputCount_CRITICAL = $OutputCount_CRITICAL + 1
-                    Set-ExitCode -code 2
+                    $ExitCode = Set-ExitCode -code 2
                 }
             }
         }
@@ -159,13 +160,13 @@ Foreach ($veeamjob in $veeamjobs) {
                     $OutputContent += "(WARNING) Job ($veeam_jobname) last Runtime (D:H:M:S): $($veeam_jobruntime.Days):$($veeam_jobruntime.Hours):$($veeam_jobruntime.Minutes):$($veeam_jobruntime.Seconds)"
                     $OutputContent += "`n"
                     $OutputCount_WARNING = $OutputCount_WARNING + 1
-                    Set-ExitCode -code 1
+                    $ExitCode = Set-ExitCode -code 1
                 }
                 else {
                     $OutputContent += "(CRITICAL) Job ($veeam_jobname) last Runtime (D:H:M:S): $($veeam_jobruntime.Days):$($veeam_jobruntime.Hours):$($veeam_jobruntime.Minutes):$($veeam_jobruntime.Seconds)"
                     $OutputContent += "`n"
                     $OutputCount_CRITICAL = $OutputCount_CRITICAL + 1
-                    Set-ExitCode -code 2
+                    $ExitCode = Set-ExitCode -code 2
                 }
             }
         }
@@ -174,6 +175,5 @@ Foreach ($veeamjob in $veeamjobs) {
 Write-Host "(OK): $OutputCount_OK; (WARNING): $OutputCount_WARNING; (CRITICAL): $OutputCount_CRITICAL; (PENDING): $OutputCount_PENDING; Jobs in Check: $OutputCount_Jobs"
 Write-Host $OutputContent
 
-$host.SetShouldExit($ExitCode)
-exit $ExitCode 
-
+$LASTEXITCODE = $ExitCode
+;exit ($ExitCode)
