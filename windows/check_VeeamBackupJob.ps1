@@ -1,0 +1,112 @@
+###  Icinga Veeam BackupJob Check   ###
+###   (c) MR-Daten - Charly Kupke   ###
+###           Version 1.0           ###
+### ### ### ### ### ### ### ### ### ###
+
+### Usage ###
+
+# Basic Information (all Jobs with Jobname, Result, State, Schedule Status and Runtime)
+# Example: .\check_VeeamBackupJob.ps1
+
+# Basic Information with custom treshholds for runtime (Defaults: OK: <= 120 mins; WARNING: >120 mins, <= 600 mins; CRITICAL: > 600 mins)
+# Example: .\check_VeeamBackupJob.ps1 -runtime_OK 180 -runtime_WARNING 3600
+
+# Basic Information for specific Jobs (multiple possible, seperate with comma)
+# Example: .\check_VeeamBackupJob.ps1 -exclusivejob '01-DCs','03-RDS'
+# Example: .\check_VeeamBackupJob.ps1 -exclusivejob '02-Fileserver' -runtime_OK 240 -runtime_WARNING 3600
+
+# Basic Information with exceptions (multiple possible, seperate with comma)
+# Example: .\check_VeeamBackupJob.ps1 -ignorejob '99-TestJob'
+# Example: .\check_VeeamBackupJob.ps1 -ignorejob '99-TestJob','50-Lab'
+
+
+
+
+param([String[]]$exclusivejob, [String[]]$ignorejob, [Switch]$runtime, [Int]$runtime_OK = 120, [Int]$runtime_WARNING = 600)
+
+if ($exclusivejob -and $ignorejob) {
+    Write-Host "(UNKNOWN) Don't use -exclusivejob and -ignorejob at the same time"
+    ;exit (3)
+}
+
+
+
+$ExitCode = 0
+function Set-ExitCode {
+    param ($code)
+    if ($ExitCode -lt $code) {
+        $ExitCode = $code
+    }
+    return $ExitCode
+}
+
+#=== Add a temporary value from User to session ($Env:PSModulePath) ======
+#https://docs.microsoft.com/powershell/scripting/developer/module/modifying-the-psmodulepath-installation-path?view=powershell-7
+$path = [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
+$env:PSModulePath +="$([System.IO.Path]::PathSeparator)$path"
+$MyModulePath = "C:\Program Files\Veeam\Backup and Replication\Console\"
+$env:PSModulePath = $env:PSModulePath + "$([System.IO.Path]::PathSeparator)$MyModulePath"
+#=========================================================================
+try {
+    $veeamPSModule = Get-Module -ListAvailable | ?{$_.Name -match "Veeam.Backup.Powershell"}
+    Import-Module $veeamPSModule.Path -DisableNameChecking
+} catch {
+    #Write-Host "Import Module failed, trying hardlink"
+    try {
+        import-module "C:\Program Files\Veeam\Backup and Replication\Console\Veeam.Backup.PowerShell.dll"
+    }catch{
+    Write-Host "(UNKNOWN) Failed to import Veeam PS Module"
+    ;exit (3)
+    }
+}
+
+$OutputContent = "`n"
+$OutputCount_OK = 0
+$OutputCount_WARNING = 0
+$OutputCount_CRITICAL = 0
+$OutputCount_PENDING = 0
+$OutputCount_UNKNOWN = 0
+$OutputCount_Jobs = 0
+
+$veeamjobs = Get-VBRJob | Sort LogNameMainPart
+Foreach ($veeamjob in $veeamjobs) {
+    $veeam_jobid = $veeamjob.Id
+    $veeam_jobname = $veeamjob.LogNameMainPart
+    $veeam_result = $veeamjob.GetLastResult()
+    $veeam_schedule = $veeamjob.IsScheduleEnabled
+    $veeam_state = $veeamjob.GetLastState()
+    if (($exclusivejob -and $exclusivejob -contains $veeam_jobname) -or ($ignorejob -and $ignorejob -notcontains $veeam_jobname) -or (!$exclusivejob -and !$ignorejob)) {
+        $OutputCount_Jobs = $OutputCount_Jobs + 1
+        $veeam_backupsessions = Get-VBRBackupSession | Where {$_.JobId -eq $veeam_jobid} | Sort EndTimeUTC -Descending | Select -First 5
+        $veeam_jobruntime = New-TimeSpan -Start $veeam_backupsessions[0].CreationTime -End $veeam_backupsessions[0].EndTime
+        if (($veeam_result -eq 'Failed') -or ($veeam_jobruntime.TotalMinutes -gt $runtime_WARNING)) {
+            $OutputContent += "(CRITICAL) Job: $veeam_jobname; Result: $veeam_result; State: $veeam_state; Scheduled: $veeam_schedule; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+            $OutputContent += "`n"
+            $OutputCount_CRITICAL = $OutputCount_CRITICAL + 1
+            $ExitCode = Set-ExitCode -code 2
+        }
+        elseif (($veeam_result -eq 'Warning') -or ($veeam_schedule -ne 'True') -or (($veeam_jobruntime.TotalMinutes -gt $runtime_OK) -and ($veeam_jobruntime.TotalMinutes -le $runtime_WARNING))) {
+            $OutputContent += "(WARNING) Job: $veeam_jobname; Result: $veeam_result; State: $veeam_state; Scheduled: $veeam_schedule; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+            $OutputContent += "`n"
+            $OutputCount_WARNING = $OutputCount_WARNING + 1
+            $ExitCode = Set-ExitCode -code 1
+        }
+        elseif ($veeam_result -eq 'None' -and $veeam_state -eq 'Working') {
+            $OutputContent += "(PENDING) Job: $veeam_jobname; Result: $veeam_result; State: $veeam_state; Scheduled: $veeam_schedule; Runtime: N/A"
+            $OutputContent += "`n"
+            $OutputCount_PENDING = $OutputCount_PENDING + 1
+        }
+        else {
+            $OutputContent += "(OK) Job: $veeam_jobname; Result: $veeam_result; State: $veeam_state; Scheduled: $veeam_schedule; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+            $OutputContent += "`n"
+            $OutputCount_OK = $OutputCount_OK + 1
+        }
+    }
+}
+Write-Host "(OK): $OutputCount_OK; (WARNING): $OutputCount_WARNING; (CRITICAL): $OutputCount_CRITICAL; (PENDING): $OutputCount_PENDING; Jobs in Check: $OutputCount_Jobs"
+Write-Host ""
+Write-Host "Runtime Tresholds - OK <= $runtime_OK minutes - WARNING <= $runtime_WARNING minutes"
+Write-Host $OutputContent
+
+$LASTEXITCODE = $ExitCode
+;exit ($ExitCode)
