@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+
+OPTERR=1
+while getopts "s:k:" OPTION ; do
+    case "$OPTION" in
+    s)  serial="$OPTARG"    ;;
+    k)  apikey="$OPTARG"    ;;
+    ?)   exit 3 ;;
+    esac
+done
+
+status[0]='[OK]'
+status[1]='[WARNING]'
+status[2]='[CRITICAL]'
+status[3]='[UNKNOWN]'
+
+if [ -z "$serial" -o -z "$apikey" ] ; then
+    RC=3
+    msg="$0: parameter missing"
+    echo -e "${status[$RC]}: $msg"
+    exit $RC
+fi
+
+meraki_url='https://n121.meraki.com/'
+filter='.'
+
+response=$( curl -s $meraki_url/api/v1/devices/$serial \
+    -H "X-Cisco-Meraki-API-Key: $apikey"  \
+    | jq -r "$filter"
+    )
+jq_rc=$?
+
+if [ $jq_rc -eq 0 -a -z "$response" ] ; then
+    RC=3
+    msg="empty response; most likely the device with serial $serial does not exist"
+else
+    case $jq_rc in
+        0)
+            RC=0
+            msg='Successfully retrieved device information'
+            ;;
+        4)
+            RC=3
+            msg='json parse error; something went wrong. Device does not exist?'
+            ;;
+        *) 
+            RC=3
+            msg="unknown error code $jq_rc"
+            ;;
+    esac
+fi
+
+echo -e "${status[$RC]}: $msg\n\n$response"
+exit $RC
+    #-H 'X-Cisco-Meraki-API-Key: f313d47c5313a8c4c52d1e22bf716cb3b4c8522a'  \
