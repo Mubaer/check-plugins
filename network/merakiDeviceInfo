@@ -9,16 +9,25 @@ while getopts "s:k:" OPTION ; do
     esac
 done
 
-status[0]='[OK]'
-status[1]='[WARNING]'
-status[2]='[CRITICAL]'
-status[3]='[UNKNOWN]'
+exit_status () {
+    local rc=$1
+    local msg=$2
+    local data=$3
+
+    local status[0]='[OK]'
+    local status[1]='[WARNING]'
+    local status[2]='[CRITICAL]'
+    local status[3]='[UNKNOWN]'
+
+    echo -e "${status[$rc]}: $msg"
+    if [ -n "$data" ] ; then
+        echo -e "\n\n$data"
+    fi
+    exit $rc
+}
 
 if [ -z "$serial" -o -z "$apikey" ] ; then
-    RC=3
-    msg="$0: parameter missing"
-    echo -e "${status[$RC]}: $msg"
-    exit $RC
+    exit_status 3 $msg
 fi
 
 meraki_url='https://n121.meraki.com/'
@@ -35,21 +44,14 @@ if [ $jq_rc -eq 0 -a -z "$response" ] ; then
     msg="empty response; most likely the device with serial $serial does not exist"
 else
     case $jq_rc in
-        0)
-            RC=0
-            msg='Successfully retrieved device information'
+        0)  exit_status 0 'Successfully retrieved device information' "$response"
             ;;
         4)
-            RC=3
-            msg='json parse error; something went wrong. Device does not exist?'
+            exit_status 3 'json parse error; something went wrong. Device does not exist?'
             ;;
         *) 
-            RC=3
-            msg="unknown error code $jq_rc"
+            exit_status 3 'unknown error code $jq_rc'
             ;;
     esac
 fi
 
-echo -e "${status[$RC]}: $msg\n\n$response"
-exit $RC
-    #-H 'X-Cisco-Meraki-API-Key: f313d47c5313a8c4c52d1e22bf716cb3b4c8522a'  \
