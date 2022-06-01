@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+callpath=`dirname $0`
+LIBPATH=$callpath/../lib
+. $LIBPATH/bashPluginFunctions.sh
 
 OPTERR=1
 while getopts "s:k:m:" OPTION ; do
@@ -9,23 +12,6 @@ while getopts "s:k:m:" OPTION ; do
     ?)   exit 3 ;;
     esac
 done
-
-exit_status () {
-    local rc=$1
-    local msg=$2
-    local data=$3
-
-    local status[0]='[OK]'
-    local status[1]='[WARNING]'
-    local status[2]='[CRITICAL]'
-    local status[3]='[UNKNOWN]'
-
-    echo -e "${status[$rc]}: $msg"
-    if [ -n "$data" ] ; then
-        echo -e "\n\n$data"
-    fi
-    exit $rc
-}
 
 if [ -z "$serial" -o -z "$apikey" ] ; then
     exit_status 3 $msg
