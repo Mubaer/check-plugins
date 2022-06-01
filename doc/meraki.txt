@@ -1,0 +1,25 @@
+So sieht ein nicht erreichbares Device aus:
+
+[
+  {
+    "id": "",
+    "category": "Connectivity",
+    "type": "Unreachable device",
+    "severity": "warning",
+    "scope": {
+      "devices": [
+        {
+          "url": "https://n121.meraki.com/Zella-Mehlis-Mei/n/Ksjs9d5b/manage/nodes/new_list/273358167037345",
+          "name": "AP #1 Altbau",
+          "productType": "wireless",
+          "serial": "Q2PD-XJYH-NFRL",
+          "mac": "f8:9e:28:71:55:a1"
+        }
+      ],
+      "applications": [],
+      "peers": []
+    }
+  }
+]
+
+

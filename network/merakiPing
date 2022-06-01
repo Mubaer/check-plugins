@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+callpath=`dirname $0`
+LIBPATH=$callpath/../lib
+. $LIBPATH/bashPluginFunctions.sh
+
+OPTERR=1
+while getopts "s:k:" OPTION ; do
+    case "$OPTION" in
+    s)  serial="$OPTARG"    ;;
+    k)  apikey="$OPTARG"    ;;
+    ?)   exit 3 ;;
+    esac
+done
+
+if [ -z "$serial" -o -z "$apikey" ] ; then
+    RC=3
+    msg="$0: parameter missing"
+    echo -e "${status[$RC]}: $msg"
+    exit $RC
+fi
+
+meraki_url='https://n121.meraki.com/'
+
+#
+# Get Network-ID of switch
+#
+curl_response=$( curl -s $meraki_url/api/v1/devices/$serial \
+    -H "X-Cisco-Meraki-API-Key: $apikey" )
+network=$( echo "$curl_response" | jq -r ".networkId" 2> /dev/null )
+jq_rc=$?
+if [ $jq_rc -eq 0 ] ; then
+    case $network in 
+        "") 
+            exit_status 3 "Empty networkID. Prabably SN '$serial' does not exist"
+            ;;
+     'null')
+            exit_status 3 'No networkID tag found. Wrong api-key?'
+            ;;
+    esac
+else
+    exit_status 3 'could not parse curl response' "$curl_response"
+fi
+
+#
+# Get Alets for this switch
+#
+filter=".[] | select(.category == \"Connectivity\" ) | .scope.devices[] | select(.serial == \"$serial\") | .url"
+response=$( curl -s $meraki_url/api/v1/networks/$network/health/alerts \
+    -H "X-Cisco-Meraki-API-Key: $apikey"  \
+    | jq -r "$filter"
+    )
+jq_rc=$?
+
+if [ $jq_rc -eq 0 -a  -z "$response" ] ; then
+    exit_status 0 'Device is reachable; no connectivity alarm found.'
+else
+    exit_status 2 "Connectivity alert found for this device ($serial)" "$response"
+fi
+
