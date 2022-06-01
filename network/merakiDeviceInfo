@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 
 OPTERR=1
-while getopts "s:k:" OPTION ; do
+while getopts "s:k:m:" OPTION ; do
     case "$OPTION" in
     s)  serial="$OPTARG"    ;;
     k)  apikey="$OPTARG"    ;;
+    m)  meraki_url="$OPTARG" ;;
     ?)   exit 3 ;;
     esac
 done
@@ -30,7 +31,7 @@ if [ -z "$serial" -o -z "$apikey" ] ; then
     exit_status 3 $msg
 fi
 
-meraki_url='https://n121.meraki.com/'
+: ${meraki_url=https://n121.meraki.com/}
 filter='.'
 
 response=$( curl -s $meraki_url/api/v1/devices/$serial \
