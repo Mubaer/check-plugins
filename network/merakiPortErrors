@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+callpath=`dirname $0`
+LIBPATH=$callpath/../lib
+. $LIBPATH/bashPluginFunctions.sh
+
+OPTERR=1
+while getopts "s:k:m:" OPTION ; do
+    case "$OPTION" in
+    s)  serial="$OPTARG"    ;;
+    k)  apikey="$OPTARG"    ;;
+    m)  meraki_url="$OPTARG" ;;
+    ?)   exit 3 ;;
+    esac
+done
+
+if [ -z "$serial" -o -z "$apikey" ] ; then
+    exit_status 3 $msg
+fi
+
+: ${meraki_url=https://n121.meraki.com/}
+
+filter='.[] | [.portId,.errors[] ] | @tsv'
+
+response=$( curl -s $meraki_url/api/v1/devices/$serial/switch/ports/statuses \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json' \
+    -H "X-Cisco-Meraki-API-Key: $apikey"  \
+    | jq -r "$filter"
+    )
+jq_rc=$?
+
+if [ $jq_rc -eq 0 -a -z "$response" ] ; then
+    RC=3
+    msg="empty response; most likely the device with serial $serial does not exist"
+else
+    case $jq_rc in
+        0)  exit_status 0 'Successfully retrieved device information' "$response"
+            ;;
+        4)
+            exit_status 3 'json parse error; something went wrong. Device does not exist?'
+            ;;
+        *) 
+            exit_status 3 'unknown error code $jq_rc'
+            ;;
+    esac
+fi
+
