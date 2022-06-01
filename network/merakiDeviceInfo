@@ -35,6 +35,8 @@ fi
 filter='.'
 
 response=$( curl -s $meraki_url/api/v1/devices/$serial \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json' \
     -H "X-Cisco-Meraki-API-Key: $apikey"  \
     | jq -r "$filter"
     )

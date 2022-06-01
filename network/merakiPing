@@ -26,6 +26,8 @@ fi
 # Get Network-ID of switch
 #
 curl_response=$( curl -s $meraki_url/api/v1/devices/$serial \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json' \
     -H "X-Cisco-Meraki-API-Key: $apikey" )
 network=$( echo "$curl_response" | jq -r ".networkId" 2> /dev/null )
 jq_rc=$?
@@ -47,6 +49,8 @@ fi
 #
 filter=".[] | select(.category == \"Connectivity\" ) | .scope.devices[] | select(.serial == \"$serial\") | .url"
 response=$( curl -s $meraki_url/api/v1/networks/$network/health/alerts \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json' \
     -H "X-Cisco-Meraki-API-Key: $apikey"  \
     | jq -r "$filter"
     )
