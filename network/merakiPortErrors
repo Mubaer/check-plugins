@@ -4,12 +4,13 @@ LIBPATH=$callpath/../lib
 . $LIBPATH/bashPluginFunctions.sh
 
 OPTERR=1
-while getopts "s:k:m:" OPTION ; do
+while getopts "s:k:m:f:" OPTION ; do
     case "$OPTION" in
-    s)  serial="$OPTARG"    ;;
-    k)  apikey="$OPTARG"    ;;
-    m)  meraki_url="$OPTARG" ;;
-    ?)   exit 3 ;;
+    s)  serial="$OPTARG"       ;;
+    k)  apikey="$OPTARG"       ;;
+    m)  meraki_url="$OPTARG"   ;;
+    f)  filter_regex="$OPTARG" ;;
+    ?)  exit 3 ;;
     esac
 done
 
@@ -19,7 +20,8 @@ fi
 
 : ${meraki_url=https://n121.meraki.com/}
 
-filter='.[] | [.portId,.errors[] ] | @tsv'
+#filter='.[] | [.portId,.errors[] ] | @tsv'
+filter='map(select(.errors | length >0 )) | .[] | [.portId, .errors[] ] | @tsv'
 
 response=$( curl -s $meraki_url/api/v1/devices/$serial/switch/ports/statuses \
     -H 'Content-Type: application/json' \
@@ -33,8 +35,11 @@ if [ $jq_rc -eq 0 -a -z "$response" ] ; then
     RC=3
     msg="empty response; most likely the device with serial $serial does not exist"
 else
+    if [ -n "$filter_regex" ] ;then 
+        response=$( echo "$response" | egrep -v "$filter_regex" )
+    fi
     case $jq_rc in
-        0)  exit_status 0 'Successfully retrieved device information' "$response"
+        0)  exit_status 0 'Successfully retrieved port errors' "$response"
             ;;
         4)
             exit_status 3 'json parse error; something went wrong. Device does not exist?'
