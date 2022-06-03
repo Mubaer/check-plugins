@@ -4,11 +4,12 @@ LIBPATH=$callpath/../lib
 . $LIBPATH/bashPluginFunctions.sh
 
 OPTERR=1
-while getopts "s:k:m:" OPTION ; do
+while getopts "s:k:m:i" OPTION ; do
     case "$OPTION" in
-    s)  serial="$OPTARG"    ;;
-    k)  apikey="$OPTARG"    ;;
+    s)  serial="$OPTARG"     ;;
+    k)  apikey="$OPTARG"     ;;
     m)  meraki_url="$OPTARG" ;;
+    i)  flag_info=1          ;;
     ?)   exit 3 ;;
     esac
 done
@@ -30,6 +31,13 @@ curl_response=$( curl -s $meraki_url/api/v1/devices/$serial \
     -H 'Accept: application/json' \
     -H "X-Cisco-Meraki-API-Key: $apikey" )
 network=$( echo "$curl_response" | jq -r ".networkId" 2> /dev/null )
+
+# Process and store response for later use
+if [ "$flag_info" == 1 ] ;then
+    device_info=$( echo "$curl_response" | jq -r '.' )
+    device_info=$( echo -e "-- switch info\n$device_info\n-- /switch info" )
+fi
+
 jq_rc=$?
 if [ $jq_rc -eq 0 ] ; then
     case $network in 
@@ -57,8 +65,8 @@ response=$( curl -s $meraki_url/api/v1/networks/$network/health/alerts \
 jq_rc=$?
 
 if [ $jq_rc -eq 0 -a  -z "$response" ] ; then
+    exit_status 0 'Device is reachable; no connectivity alarm found.' "$device_info"
     exit_status 0 'Device is reachable; no connectivity alarm found.'
 else
-    exit_status 2 "Connectivity alert found for this device ($serial)" "$response"
+    exit_status 2 "Connectivity alert found for this device ($serial)" "$response\n$device_info"
 fi
-
