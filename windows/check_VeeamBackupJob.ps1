@@ -8,8 +8,8 @@
 # Basic Information (all Jobs with Jobname, Result, State, Schedule Status and Runtime)
 # Example: .\check_VeeamBackupJob.ps1
 
-# Basic Information with custom thresholds for runtime (Defaults: OK: < 1440 mins; WARNING: =>1440 mins, < 2880 mins; CRITICAL: => 2880 mins)
-# Example: .\check_VeeamBackupJob.ps1 -runtime_WARNING 720 -runtime_CRITICAL 1440
+# Basic Information with custom treshholds for runtime (Defaults: OK: <= 120 mins; WARNING: >120 mins, <= 600 mins; CRITICAL: > 600 mins)
+# Example: .\check_VeeamBackupJob.ps1 -runtime_OK 180 -runtime_WARNING 3600
 
 # Basic Information for specific Jobs (multiple possible, seperate with comma)
 # Example: .\check_VeeamBackupJob.ps1 -exclusivejob '01-DCs','03-RDS'
@@ -100,11 +100,13 @@ Foreach ($veeamjob in $veeamjobs) {
             if ($veeam_jobhistory[0].Result -eq 'Success') {
                 $OutputContent += "(OK) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: $veeam_schedule; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
                 $OutputContent += "`n"
+                $OutputCount_OK = $OutputCount_OK + 1
             }
             elseif ($veeam_jobhistory[0].Result -eq 'Warning') {
                 if ($veeam_jobhistory[1].Result -eq 'Success') {
                     $OutputContent += "(OK) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: $veeam_schedule; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
                     $OutputContent += "`n"
+                    $OutputCount_OK = $OutputCount_OK + 1
                 }
                 elseif ($veeam_jobhistory[1].Result -eq 'Warning') {
                     if ($veeam_jobhistory[2].Result -eq 'Success') {
@@ -131,6 +133,7 @@ Foreach ($veeamjob in $veeamjobs) {
                 if ($veeam_jobhistory[1].Result -eq 'OK') {
                     $OutputContent += "(OK) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: $veeam_schedule; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
                     $OutputContent += "`n"
+                    $OutputCount_OK = $OutputCount_OK + 1
                 }
                 elseif ($veeam_jobhistory[1].Result -eq 'Warning') {
                     $OutputContent += "(WARNING) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: $veeam_schedule; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
@@ -185,6 +188,7 @@ Foreach ($veeamjob in $veeamjobs) {
                 else {
                     $OutputContent += "(OK) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: $veeam_schedule; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
                     $OutputContent += "`n"
+                    $OutputCount_OK = $OutputCount_OK + 1
                 }
             }
         }
@@ -192,7 +196,7 @@ Foreach ($veeamjob in $veeamjobs) {
 }
 Write-Host "(OK): $OutputCount_OK; (WARNING): $OutputCount_WARNING; (CRITICAL): $OutputCount_CRITICAL; (PENDING): $OutputCount_PENDING; Jobs in Check: $OutputCount_Jobs"
 Write-Host ""
-Write-Host "Running Jobs Runtime Thresholds - WARNING at $runtime_WARNING minutes - CRITICAL at $runtime_CRITICAL minutes"
+Write-Host "Running Jobs Runtime Tresholds - WARNING at $runtime_WARNING minutes - CRITICAL at $runtime_CRITICAL minutes"
 Write-Host $OutputContent
 
 $LASTEXITCODE = $ExitCode
