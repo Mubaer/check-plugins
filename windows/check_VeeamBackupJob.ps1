@@ -39,19 +39,19 @@ function LastResultsString {
     $results = @($result1, $result2, $result3)
     Foreach ($result in $results) {
         if ($result -eq 'Success') {
-            $resultstring += 'Success|'
+            $resultstring += 'Success, '
         }
         elseif ($result -eq 'Warning') {
-            $resultstring += 'Warning|'
+            $resultstring += 'Warning, '
         }
         elseif ($result -eq 'Failed') {
-            $resultstring += 'Failed|'
+            $resultstring += 'Failed, '
         }
         elseif ($result -eq 'None') {
-            $resultstring += 'N/A'
+            $resultstring += 'N/A, '
         }
     }
-    $resultstring = $resultstring.Substring(0,$resultstring.Length-1)
+    $resultstring = $resultstring.Substring(0,$resultstring.Length-2)
     return $resultstring
 }
 
@@ -216,3 +216,5 @@ Write-Host ""
 Write-Host "Running Jobs Runtime Thresholds - WARNING at $runtime_WARNING minutes - CRITICAL at $runtime_CRITICAL minutes"
 Write-Host $OutputContent
 
+$LASTEXITCODE = $ExitCode
+;exit ($ExitCode)
