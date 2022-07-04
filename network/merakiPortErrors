@@ -26,7 +26,7 @@ filter='map(select(.errors | length >0 )) | .[] | [.portId, .errors[] ] | @tsv'
 response=$( curl -s $meraki_url/api/v1/devices/$serial/switch/ports/statuses \
     -H 'Content-Type: application/json' \
     -H 'Accept: application/json' \
-    -H "X-Cisco-Meraki-API-Key: $apikey"  \
+    -H "X-Cisco-Meraki-API-Key: $apikey"   \
     | jq -r "$filter"
     )
 jq_rc=$?
@@ -43,6 +43,9 @@ else
             ;;
         4)
             exit_status 3 'json parse error; something went wrong. Device does not exist?'
+            ;;
+        5)
+            exit_status 3 'json parse error; something went wrong. Device does not support port-errors?'
             ;;
         *) 
             exit_status 3 'unknown error code $jq_rc'
