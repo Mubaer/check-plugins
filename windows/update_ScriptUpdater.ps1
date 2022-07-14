@@ -5,13 +5,13 @@
 
 ### Usage ###
 
-# Execute with Icinga 
+# Execute from Icinga 
 # Example: .\update_IcingaChecks.ps1 -satellite 192.168.1.1
 
 param([String[]]$satellite)
 
 $WorkPath = "C:\ProgramData\icinga2"
-if (-not (Test-Path $WorkPath)) {
+if (! (Test-Path $WorkPath)) {
     Write-Host "ProgramData\icinga2 Folder doesn't exists"
     $LASTEXITCODE = 2
     ;exit (2)
@@ -48,7 +48,7 @@ catch {
 
 $ExtractionPath = $WorkPath + "\bin\MRDaten"
 
-if (-not (Test-Path $ExtractionPath)) {
+if (!(Test-Path $ExtractionPath)) {
     New-Item -ItemType Directory -Path $ExtractionPath
 }
 try {
@@ -59,3 +59,6 @@ catch {
     $LASTEXITCODE = 2
     ;exit (2)
 }
+Write-Host "OK"
+$LASTEXITCODE = 0
+;exit (0)
