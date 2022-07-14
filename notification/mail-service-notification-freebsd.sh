@@ -66,6 +66,13 @@ urlencode() {
   echo "$e"
 }
 
+quoted_printable () {
+    perl -MMIME::QuotedPrint -s -ne '
+        BEGIN { *e = $d ? \&decode_qp : \&encode_qp }
+        print e $_
+    ' -- "$@"
+}
+
 getemoticon() {
     local state=$1
     case $state in
@@ -140,6 +147,10 @@ done
 
 ## Build the message's subject
 SUBJECT="[$NOTIFICATIONTYPE] $SERVICEDISPLAYNAME on $HOSTDISPLAYNAME is $SERVICESTATE!"
+
+## Pipe subject through quoted-printable encoder
+SUBJECT=$( echo "$SUBJECT" | quoted_printable -e )
+SUBJECT="=?UTF-8?Q?${SUBJECT}?="
 
 
 ## Build 'Host' string
