@@ -1,6 +1,6 @@
 ###  Icinga Veeam BackupJob Check   ###
 ###   (c) MR-Daten - Charly Kupke   ###
-###           Version 2.2           ###
+###           Version 2.3           ###
 ### ### ### ### ### ### ### ### ### ###
 
 ### Usage ###
@@ -213,26 +213,32 @@ Foreach ($veeamjob in $veeamjobs) {
 }
 
 $LicenseStatus = Get-VBRInstalledLicense
-$VeeamLicenseExpiration = New-TimeSpan -Start $timeNow -End $LicenseStatus.ExpirationDate
+
 if ($LicenseStatus.Status -ne 'Valid') {
     $OutputContent += "`n"
     $OutputContent += "(CRITICAL) Veeam License Status is $($LicenseStatus.Status)"
     $ExitCode = Set-ExitCode -code 2
 }
-
-if ($VeeamLicenseExpiration.TotalDays -gt 30) {
+if ($LicenseStatus.Type -eq 'Perpetual'){
     $OutputContent += "`n"
-    $OutputContent += "(OK) Veeam License expires in $([math]::Floor($VeeamLicenseExpiration.TotalDays)) days"
-}
-elseif (($VeeamLicenseExpiration.TotalDays -le 30) -and ($VeeamLicenseExpiration -gt 14)) {
-    $OutputContent += "`n"
-    $OutputContent += "(WARNING) Veeam License expires in $([math]::Floor($VeeamLicenseExpiration.TotalDays)) days"
-    $ExitCode = Set-ExitCode -code 1    
+    $OutputContent += "(OK) perpetual Veeam License"
 }
 else {
-    $OutputContent += "`n"
-    $OutputContent += "(CRITICAL) Veeam License expires in $([math]::Floor($VeeamLicenseExpiration.TotalDays)) days"
-    $ExitCode = Set-ExitCode -code 2
+    $VeeamLicenseExpiration = New-TimeSpan -Start $timeNow -End $LicenseStatus.ExpirationDate
+    if ($VeeamLicenseExpiration.TotalDays -gt 30) {
+        $OutputContent += "`n"
+        $OutputContent += "(OK) Veeam License expires in $([math]::Floor($VeeamLicenseExpiration.TotalDays)) days"
+    }
+    elseif (($VeeamLicenseExpiration.TotalDays -le 30) -and ($VeeamLicenseExpiration -gt 14)) {
+        $OutputContent += "`n"
+        $OutputContent += "(WARNING) Veeam License expires in $([math]::Floor($VeeamLicenseExpiration.TotalDays)) days"
+        $ExitCode = Set-ExitCode -code 1    
+    }
+    else {
+        $OutputContent += "`n"
+        $OutputContent += "(CRITICAL) Veeam License expires in $([math]::Floor($VeeamLicenseExpiration.TotalDays)) days"
+        $ExitCode = Set-ExitCode -code 2
+    }
 }
 
 Write-Host "(OK): $OutputCount_OK; (WARNING): $OutputCount_WARNING; (CRITICAL): $OutputCount_CRITICAL; (PENDING): $OutputCount_PENDING; Jobs in Check: $OutputCount_Jobs"
