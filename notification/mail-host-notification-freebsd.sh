@@ -129,8 +129,9 @@ done
 SUBJECT="[$NOTIFICATIONTYPE] Host $HOSTDISPLAYNAME is $HOSTSTATE!"
 
 ## Pipe subject through quoted-printable encoder
-SUBJECT=$( echo "$SUBJECT" | quoted_printable -e )
-SUBJECT="=?UTF-8?Q?${SUBJECT}?="
+# commented out on 2022-08-02, does not work reliable
+#SUBJECT=$( echo "$SUBJECT" | quoted_printable -e )
+#SUBJECT="=?UTF-8?Q?${SUBJECT}?="
 
 ## Set emoticon for notificationtype
 emoti=`getemoticon $NOTIFICATIONTYPE`
