@@ -126,7 +126,7 @@ for P in LONGDATETIME HOSTNAME HOSTDISPLAYNAME HOSTOUTPUT HOSTSTATE USEREMAIL NO
 done
 
 ## Build the message's subject
-SUBJECT="[$NOTIFICATIONTYPE] Host $HOSTDISPLAYNAME is $HOSTSTATE!"
+SUBJECT="[$NOTIFICATIONTYPE | $HOSTSTATE] Host '$HOSTDISPLAYNAME'"
 
 ## Pipe subject through quoted-printable encoder
 # commented out on 2022-08-02, does not work reliable
