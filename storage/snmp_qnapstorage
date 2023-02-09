@@ -1,0 +1,420 @@
+#!/usr/bin/env bash
+
+# This plugin inspects the baseOID MIB. Although it was written for checking
+# a "Sophos UTM", it can be used universally. The memory calculation may not
+# be what you expect for other systems.
+
+# Define Vars
+declare -A snmpData
+declare -A id
+declare -A nameMap
+
+glob_rcode=0
+
+#
+# CLI Parsing
+#
+
+OPTERR=1
+while getopts "H:C:u:x:X:a:A:l:w:c:m:f:t:Bhd" OPTION ; do
+    case "${OPTION}" in
+        H) hostname=${OPTARG}       ;;
+        C) community="-c ${OPTARG}" ;;
+        u) authuser="-u ${OPTARG}"  ;;
+        a) authproto="-a ${OPTARG}" ;;
+        A) authpass="-A ${OPTARG}"  ;;
+        x) privproto="-x ${OPTARG}" ;;
+        X) privpass="-X ${OPTARG}"  ;;
+        l) seclevel="-l ${OPTARG}"  ;;
+        w) warn=${OPTARG}       ;;
+        c) crit=${OPTARG}       ;;
+        m) mode=${OPTARG}       ;;
+        f) filter=${OPTARG}     ;;
+        t) tout=${OPTARG}       ;;
+        B) nobulk=1         ;;
+        h) helpme=1         ;;
+        d) debug=1      ;;
+    esac
+done
+
+#######
+# Functions
+#######
+
+function percent() {
+    local total=$1
+    local part=$2
+    $bc -l <<< "scale=4; r( ($part / $total * 100), 0 )"
+}
+
+function calc_state() {
+    local value=$1;local warn=$2;local crit=$3;local rcode
+
+    if [ $value -gt $crit ] ; then
+        rcode=2
+    elif [ $value -gt $warn ] ; then
+        rcode=1
+    else
+        rcode=0
+    fi
+    echo $rcode
+}
+
+# take into account the current global return code
+function calc_globalstate() {
+    local value=$1;local warn=$2;local crit=$3;local rcode
+
+    rcode=$( calc_state $value $warn $crit )
+
+    if [ $rcode -le $glob_rcode ] ; then
+        rcode=$glob_rcode
+    else
+        rcode=$rcode
+    fi
+    echo $rcode
+}
+
+function set_globalstate() {
+    local rcode=$1
+
+    if [ $rcode -le $glob_rcode ] ; then
+        rcode=$glob_rcode
+    else
+        rcode=$rcode
+    fi
+    echo $rcode
+}
+
+function state_string() {
+    local rcode=$1
+    local string
+    case $rcode in 
+        0) string='(OK):' ;;
+        1) string='(WARNING):' ;;
+        2) string='(CRITICAL):' ;;
+        3) string='(UNKNOWN):' ;;
+    esac
+    echo $string
+}
+
+function translate_pool_status() {
+    local numcode=$1
+    local version=$2
+    version=QuTS
+
+    case $version in 
+        QuTS)
+            case $numcode in
+                '-6')
+                    rstat=SED_LOCKED       ;;
+                '-5')
+                    rstat='DETACHING'   ;;
+                '-4')
+                    rstat='REMOVING'    ;;
+                '-3')
+                    rstat='ERROR'   ;;
+                '-2')
+                    rstat='NOT_READY'   ;;
+                '-1')
+                    rstat='WARNING' ;;
+                0)
+                    rstat='READY'   ;;
+                1)
+                    rstat='ENABLE_QTIER'    ;;
+                2)
+                    rstat='SED_LOCKING' ;;
+                3)
+                    rstat='SED_UNLOCKING'   ;;
+            esac;;
+        QuHERO)
+            case $numcode in
+                '-4')
+                    rstat='SED_LOCKED'  ;;
+                '-3')
+                    rstat='ERROR'   ;;
+                '-2')
+                    rstat='NOT_READY'   ;;
+                '-1')
+                    rstat='WARNING' ;;
+                0)
+                    rstat='READY'   ;;
+                1)
+                    rstat='RESILVERING' ;;
+                2)
+                    rstat='EXPORTING'   ;;
+                3)
+                    rstat='REMOVING'    ;;
+                4)
+                    rstat='SCRUBBING'   ;;
+                5)
+                    rstat='CREATING'    ;;
+                6)
+                    rstat='SED_LOCKING' ;;
+                7)
+                    rstat='SED_UNLOCKING'   ;;
+                8)
+                    rstat='STOPPING'    ;;
+                9)
+                    rstat='STOPPED' ;;
+                10)
+                    rstat='STARTING'    ;;
+                11)
+                    rstat='IMPORTING'   ;;
+                12)
+                    rstat='READONLY'    ;;
+                13)
+                    rstat='PRUNING' ;;
+                14)
+                    rstat='TUNING'  ;;
+                0xFF)
+                    rstat='NONE_STATUS' ;;
+            esac;;
+    esac
+    echo $rstat
+}
+
+function mode_string() {
+    local mode=$1
+    local string
+    case $mode in 
+        pool) string='Pools' ;;
+        volume) string='Volumes' ;;
+    esac
+    echo $string
+}
+
+# generate human readable bytes
+function hr_bytes() {
+    local rawbyte=$1
+    local bstr=Byte
+
+    # more than 10 TB
+    if [ $rawbyte -gt 10000000000000 ] ;then
+        hrbyte="$(( $rawbyte>>40 )) T$bstr"
+
+    # more than 10 GB
+    elif [ $rawbyte -gt 10000000000 ] ;then
+        hrbyte="$(( $rawbyte>>30 )) G$bstr"
+
+    # more than 10 MB
+    elif [ $rawbyte -gt 10000000 ] ;then
+        hrbyte="$(( $rawbyte>>20 )) M$bstr"
+    fi
+
+    echo $hrbyte
+}
+
+
+function storage_byfilter() {
+    # Print Out Data for Elements, filtered by Name
+    # By default, select all elements
+
+    local filter=$1
+
+    for eName in ${!nameMap[@]}
+    do
+        if [[  "$eName" =~ $filter ]]
+        then
+            outElements+=(${nameMap[$eName]})
+        fi
+    done
+
+    local loop_rcode=0
+    local loop_state
+    if [ ${#outElements[@]} -ne 0 ] ; then
+        outmsg+="$( mode_string $mode ): [used/total] "
+    else
+        outmsg+="No $( mode_string $mode ) found"
+    fi
+
+    for element in  ${outElements[@]}
+    do
+        name=${snmpData[${baseOID}.${id[name]}.$element]}
+        size_bytes=${snmpData[${baseOID}.${id[size]}.$element]}
+        used_bytes=$(( \
+            ${snmpData[${baseOID}.${id[size]}.$element]} - \
+            ${snmpData[${baseOID}.${id[free]}.$element]} ))
+        percent=$( percent $size_bytes $used_bytes )
+        vol_status=${snmpData[${baseOID}.${id[status]}.$element]}
+
+	if [ $mode == 'pool' ] ; then
+		vol_status=$( translate_pool_status $vol_status )
+	fi
+        
+        # Calc local return code / state text string
+        if [ -n "$warn" -a -n "$crit" ] ;then
+            loop_rcode=$( calc_state ${percent} $warn $crit )
+            loop_state=$( state_string $loop_rcode )
+
+            # Update global plugin return code
+            glob_rcode=$( calc_globalstate ${percent} $warn $crit )
+        fi
+
+        # text output
+        outmsg+="$name $(( used_bytes>>20 ))/$(( size_bytes>>20 )) MB (${percent}%) Status: $vol_status; "
+        details+="$loop_state $name\n"
+        details+="  Size: $( hr_bytes $size_bytes )\n"
+        details+="  Used: $( hr_bytes $used_bytes ) (${percent}%)\n"
+        details+="  Status: $vol_status\n\n"
+        perfdata+="$name=${percent}%;$warn;$crit;0;100 "
+    done
+}
+
+function raid_byfilter() {
+    # Print Out Data for Elements, filtered by Name
+    # By default, select all elements
+
+    local filter=$1
+
+    for eName in ${!nameMap[@]}
+    do
+        if [[  "$eName" =~ $filter ]]
+        then
+            outElements+=(${nameMap[$eName]})
+        fi
+    done
+
+    local loop_rcode=0
+    local loop_state
+    for element in  ${outElements[@]}
+    do
+        name=${snmpData[${baseOID}.${id[name]}.$element]}
+        size_bytes=${snmpData[${baseOID}.${id[size]}.$element]}
+        raid_status=${snmpData[${baseOID}.${id[status]}.$element]}
+
+        # Check Status
+        case $raid_status in
+            '"Ready"')
+                loop_rcode=0;;
+            '"Degraded"')
+                loop_rcode=1;;
+        esac
+        glob_rcode=$( set_globalstate $loop_rcode ) 
+
+        # text output
+        outmsg+="RAID $name: Capacity $(( size_bytes>>20 )) MB, Status $raid_status; "
+        #details+="$loop_state $name\n"
+        #details+=" Size: $( hr_bytes $size_bytes )\n"
+        #details+=" Used: $( hr_bytes $used_bytes ) (${percent}%)\n\n"
+        #perfdata+="$name=${percent}%;$warn;$crit;0;100 "
+    done
+}
+
+#
+# MAIN
+#
+
+#
+# set default values
+#
+mode=${mode:=volume}
+filter=${filter:=.}
+tout=${tout:=20}
+
+case $mode in
+    raid)
+        baseOID='.1.3.6.1.4.1.55062.1.10.5.1'
+        id[index]=1
+        id[name]=3
+        id[size]=5
+        id[status]=4    ;;
+    pool)
+        baseOID='.1.3.6.1.4.1.55062.1.10.7.1'
+        id[index]=1
+        id[name]=2
+        id[size]=3
+        id[free]=4
+        id[status]=5    ;;
+    volume)
+        baseOID='.1.3.6.1.4.1.55062.1.10.9.1'
+        id[index]=1
+        id[name]=8
+        id[size]=3
+        id[free]=4
+        id[status]=5    ;;
+    *)
+        echo "(UNKNOWN): mode '-m $mode' not known" ; exit 3 ;;
+esac
+
+# 
+# precission calculator 'bc' compat. check
+#
+if [ -x /usr/local/bin/bc ]; then 
+    bc=/usr/local/bin/bc
+elif [ -x /usr/bin/bc ] ; then
+    bc=/usr/bin/bc
+fi
+
+#
+# Compose snmp command
+#
+if [ "$nobulk" ]; then walk=snmpwalk;  else walk=snmpbulkwalk; fi
+if [ -n "$authuser" ]; then snmpv=3; else snmpv=2c; fi
+
+snmpcmd="$walk -Onq -v $snmpv -t $tout -r 3 \
+    $community $authuser $privproto $privpass $seclevel $authproto $authpass \
+    $hostname  $baseOID"
+
+if [ -n "$debug" ] ; then echo "debug: $snmpcmd" ; fi
+
+
+# First of all, get the SNMP-Data
+snmpResponse=$($snmpcmd 2>&1)
+snmpexit=$?
+
+if [ $snmpexit -ne 0 ] ; then
+    echo "(UNKNOWN): Problem fetching SNMP data."
+    echo 
+    echo "SNMP Output was: $snmpResponse"
+    exit 3
+fi
+
+while read oid value unit
+do 
+    snmpData[$oid]="$value"
+done <<< "$snmpResponse"
+
+#### building indexes
+#
+
+# build element index
+for key in ${!snmpData[@]} ; do
+    if [[ $key == "$baseOID.${id[index]}"* ]] ; then
+        elementIndex+=( ${snmpData[$key]} )
+    fi
+done
+
+# build name map
+for element in  ${elementIndex[@]}
+do
+    nameMap[${snmpData[${baseOID}.${id[name]}.$element]}]=${snmpData[${baseOID}.${id[index]}.$element]}
+done
+
+# build element map
+for eName in ${!nameMap[@]}
+do
+    element=${nameMap[$eName]}
+done
+
+#
+#
+#### / building indexes
+
+
+case $mode in
+    pool)
+        storage_byfilter $filter;;
+    volume)
+        storage_byfilter $filter;;
+    raid)
+        raid_byfilter $filter;;
+esac
+
+
+
+echo -en "$( state_string $glob_rcode ) $outmsg"
+if [ -n "$details" ] ; then echo -en "\n\n$details" ; fi
+if [ -n "$perfdata" ] ; then echo -en "|$perfdata" ; fi
+echo
+
+exit $glob_rcode
