@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 
-# This plugin inspects the baseOID MIB. Although it was written for checking
-# a "Sophos UTM", it can be used universally. The memory calculation may not
-# be what you expect for other systems.
+# This plugin retrieves volume, storagepool and RAID infomration from
+# QNAP devices using SNMP. It takes into account the QNAP's status of
+# volumes and pools and merges it with the CLI thesholds
+#
+# Version: 1.0 Author: msander
+#
 
 # Define Vars
 declare -A snmpData
@@ -106,7 +109,7 @@ function translate_pool_status() {
         QuTS)
             case $numcode in
                 '-6')
-                    rstat=SED_LOCKED       ;;
+                    rstat='SED_LOCKED'       ;;
                 '-5')
                     rstat='DETACHING'   ;;
                 '-4')
@@ -237,26 +240,31 @@ function storage_byfilter() {
         percent=$( percent $size_bytes $used_bytes )
         vol_status=${snmpData[${baseOID}.${id[status]}.$element]}
 
-	if [ $mode == 'pool' ] ; then
-		vol_status=$( translate_pool_status $vol_status )
-	fi
+    if [ $mode == 'pool' ] ; then
+        vol_status=$( translate_pool_status $vol_status )
+    fi
         
-        # Calc local return code / state text string
-        if [ -n "$warn" -a -n "$crit" ] ;then
-            loop_rcode=$( calc_state ${percent} $warn $crit )
-            loop_state=$( state_string $loop_rcode )
+    # Calc local return code / state text string
+    if [ -n "$warn" -a -n "$crit" ] ;then
+        loop_rcode=$( calc_state ${percent} $warn $crit )
 
-            # Update global plugin return code
-            glob_rcode=$( calc_globalstate ${percent} $warn $crit )
-        fi
+        # Update global plugin return code
+        glob_rcode=$( calc_globalstate ${percent} $warn $crit )
+    fi
 
-        # text output
-        outmsg+="$name $(( used_bytes>>20 ))/$(( size_bytes>>20 )) MB (${percent}%) Status: $vol_status; "
-        details+="$loop_state $name\n"
-        details+="  Size: $( hr_bytes $size_bytes )\n"
-        details+="  Used: $( hr_bytes $used_bytes ) (${percent}%)\n"
-        details+="  Status: $vol_status\n\n"
-        perfdata+="$name=${percent}%;$warn;$crit;0;100 "
+    if [ $vol_status != 'READY' ] ;then 
+        # Update global return code
+        glob_rcode=$( set_globalstate 1 )
+    fi
+
+    loop_state=$( state_string $loop_rcode )
+    # text output
+    outmsg+="$name $(( used_bytes>>20 ))/$(( size_bytes>>20 )) MB (${percent}%) Status: $vol_status; "
+    details+="Usage is $loop_state $name\n"
+    details+="  Size:   $( hr_bytes $size_bytes )\n"
+    details+="  Used:   $( hr_bytes $used_bytes ) (${percent}%)\n"
+    details+="  Status: $vol_status (according to QNAP device)\n\n"
+    perfdata+="$name=${percent}%;$warn;$crit;0;100 "
     done
 }
 
@@ -289,14 +297,14 @@ function raid_byfilter() {
             '"Degraded"')
                 loop_rcode=1;;
         esac
+        loop_state=$( state_string $loop_rcode )
         glob_rcode=$( set_globalstate $loop_rcode ) 
 
         # text output
-        outmsg+="RAID $name: Capacity $(( size_bytes>>20 )) MB, Status $raid_status; "
-        #details+="$loop_state $name\n"
-        #details+=" Size: $( hr_bytes $size_bytes )\n"
-        #details+=" Used: $( hr_bytes $used_bytes ) (${percent}%)\n\n"
-        #perfdata+="$name=${percent}%;$warn;$crit;0;100 "
+        outmsg+="RAID $name: Capacity $(( size_bytes>>30 )) GB, Status $raid_status; "
+        details+="$loop_state $name\n"
+        details+="  Size:   $( hr_bytes $size_bytes )\n"
+        details+="  Status: $raid_status\n\n"
     done
 }
 
