@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+import requests
+import json
+import urllib3
+#urllib3.disable_warnings()
+import logging
+import argparse
+import sys
+import pprint
+
+#
+# parse command line parameters
+#
+cli = argparse.ArgumentParser \
+    (description=' read and parse REST-API responses')
+
+cli.add_argument('--id', dest='client_id',         help='Client ID')
+cli.add_argument('--secret', dest='client_secret',       help='Client Secret')
+cli.add_argument('--tenant-search', dest='tenant_filter', \
+        help='select first tenant found by this substring')
+cli.add_argument('--tenant-id', dest='tenant_id',  help='Use this Tenant-ID for checks')
+cli.add_argument('--key',  dest='api_key',      help='API-Key (Bearer-Token)')
+cli.add_argument('--version', action='version', version='%(prog)s 0.1')
+cli.add_argument('--debug', action='store_true')
+
+args = cli.parse_args()
+
+# Global parameters
+url_id  = 'https://id.sophos.com'
+url_api = 'https://api.central.sophos.com'
+
+# select authentication method
+if args.client_id and args.client_secret:
+    #credentials=(args.user, args.pw)
+    auth_method='basic'
+elif args.api_key:
+    credentials=args.api_key
+    auth_method='api_key'
+else:
+    logging.error('no authentication credentials found, use either --id and --secret, or --key')
+    sys.exit()
+
+
+#
+# funcions for loggin in and get started
+#
+def get_token(user, pwd):
+    url = "{}/api/v2/oauth2/token".format( url_id )
+    header = { 'Content-Type': 'application/x-www-form-urlencoded' }
+    data="grant_type=client_credentials&client_id={}&client_secret={}&scope=token".format( user, pwd )
+    resp = requests.post( url, data=data, headers=header )
+
+    if resp:
+        access_token = resp.json().get( 'access_token' )
+    else:
+        logging.error("something went wrong\n\n{}\nRESP_HEADER\n{}\n\nRESP_TEXT\n{}".format( \
+                resp.headers, resp.text ))
+
+    return access_token
+
+def whoami( access_token ):
+    url = "{}/whoami/v1".format( url_api )
+    header = { 'Authorization': "Bearer {}".format(access_token) }
+    resp = requests.get( url, headers=header )
+    myid = ''
+    api =  ''
+
+    if resp:
+        json_resp = resp.json()
+        myid = json_resp.get('id')
+        glob_api = json_resp.get('apiHosts').get('global')
+        region_api = json_resp.get('apiHosts').get('dataRegion')
+
+        if region_api != None:  
+            api=region_api
+        else:
+            api=glob_api
+
+    else:
+        logging.error("something went wrong\n\nRESP_HEADER\n{}\n\nRESP_TEXT\n{}".format( \
+                resp.headers, resp.text ))
+    return (myid, api)
+
+#
+# functions dealing with tenants
+#
+def get_tenants( access_token, myid, url_api ):
+    url = "{}/partner/v1/tenants".format( url_api )
+    header = { 
+        'Authorization': "Bearer {}".format(access_token),
+        'X-Partner-ID':  myid,
+        'Accept': 'application/json'
+        }
+    resp = requests.get( url + '?pageTotal=true', headers=header )
+    return resp.json().get('items')
+
+def list_tenants( tenant_items ):
+    list_string=''
+    for tenant in tenant_items:
+        list_string += "{}: Name: \"{}\"\n".format( tenant['id'], tenant['name'] )
+    return list_string
+
+def search_tenant( tenant_items, t_filter):
+    list_string=''
+    for tenant in  tenant_items:
+        if tenant['name'].find(t_filter) >= 0:
+            list_string += "{}: Name: \"{}\"\n".format( tenant['id'], tenant['name'] )
+    return list_string
+
+def apihost_of_tenant( tenant_id, tenant_items ):
+    api_host=None
+    for tenant in  tenant_items:
+        if tenant['id'] == tenant_id:
+            api_host=tenant['apiHost']
+    return api_host
+#
+# Sophos Endpoints
+#
+def get_endpoints( tenant_id, url_api, health_status=None ):
+    if health_status:
+        url = "{}/endpoint/v1/endpoints?healthStatus={}".format( url_api, health_status )
+    else:
+        url = "{}/endpoint/v1/endpoints".format( url_api )
+    header = { 
+        'Authorization': "Bearer {}".format(access_token),
+        'X-Tenant-ID':  tenant_id,
+        'Accept': 'application/json'
+        }
+    resp = requests.get( url, headers=header )
+
+    if resp:
+        return resp.json().get('items')
+    else:
+        logging.error("something went wrong\n\nRESP_HEADER\n{}\n\nRESP_TEXT\n{}".format( \
+                resp.headers, resp.text ))
+    
+#def select_endpoints( endpoint_list, health_status=None ):
+
+#
+# Sophos Alerts
+#
+def get_alerts( tenant_id, url_api, product=None ):
+    if product:
+        url = "{}/common//v1/alerts?product={}".format( url_api, product )
+    else:
+        url = "{}/common//v1/alerts".format( url_api )
+    header = { 
+        'Authorization': "Bearer {}".format(access_token),
+        'X-Tenant-ID':  tenant_id,
+        'Accept': 'application/json'
+        }
+    resp = requests.get( url, headers=header )
+
+    if resp:
+        return resp.json()
+    else:
+        logging.error("something went wrong\n\nRESP_HEADER\n{}\n\nRESP_TEXT\n{}".format( \
+                resp.headers, resp.text ))
+
+#
+#
+# MAIN
+#
+#
+
+pp = pprint.PrettyPrinter(indent=4)
+
+# Login and fetch data
+access_token = get_token( args.client_id, args.client_secret )
+(myid, api) = whoami( access_token )
+tenant_list = get_tenants( access_token, myid, api )
+
+if not args.tenant_id:
+    #
+    # Support and Test Mode; no checks here
+    #
+    if args.tenant_filter:
+        print( search_tenant( tenant_list, args.tenant_filter ), end='' )
+    else:
+        print("You did not provide any tenant information. Here's a list of tenants:")
+        print( list_tenants( tenant_list), end='' )
+        print("----- End OF List -----")
+else:
+    #
+    # Chack mode!
+    #
+    api = apihost_of_tenant( args.tenant_id, tenant_list )
+
+    all_endpoints=get_endpoints( args.tenant_id, api )
+
+    statuscount={}
+    for ep in all_endpoints:
+        if ep.get('health'):
+            status = ep.get('health').get('overall')
+            if not statuscount.get(status):
+                statuscount[status]={}
+                statuscount[status]['count'] = 1
+                statuscount[status]['hosts'] = [ ep.get('hostname') ]
+            else:
+                statuscount[status]['count'] += 1
+                statuscount[status]['hosts'].append( ep.get('hostname') )
+        else:
+            status = 'n/a'
+            if not statuscount.get(status):
+                statuscount[status]={}
+                statuscount[status]['count'] = 1
+                statuscount[status]['hosts'] = [ ep.get('hostname') ]
+            else:
+                statuscount[status]['count'] += 1
+                statuscount[status]['hosts'].append( ep.get('hostname') )
+
+    result_message=''
+    result_detail=''
+    for status in statuscount:
+        result_message += "{}: {}; ".format( status, statuscount[status]['count'] )
+        result_detail  += "Endpoints with status {}:\n\t{}\n\n".format( status, statuscount[status]['hosts'] )
+
+
+    print( result_message + "\n" )
+    print( result_detail )
+    #alerts=get_alerts( args.tenant_id, api, 'firewall' )
+    #print( pp.pprint(alerts) )
