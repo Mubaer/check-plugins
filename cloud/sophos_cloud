@@ -1,4 +1,22 @@
 #!/usr/bin/env python3
+
+# Feature list:
+#  - Check for Endpoint-Status or Device Alerts
+#  - Verbose-Switch: Only summarize or print out detailed information
+#  - partner-account-mode
+#     - specify a tennant-id if you are using a partner-account
+#       with multiple tenants
+#     - list available tenant-ids and names
+#   - individual thesholds for status suspicious, bad, good
+#   - individual thesholds for alarm levels high, medium, los
+#   - thesholds are merged, most critical wins
+#
+# Author: m.sander@mr-daten.de
+# History:
+program_version=str(0.6)
+#    Version 0.6  Fri Feb 24 2023
+#       First ready-to-use version
+#
 import requests
 import json
 import urllib3
@@ -117,7 +135,7 @@ def get_endpoints( tenant_id, url_api, health_status=None ):
     if resp:
         return resp.json().get('items')
     else:
-        logging.error("something went wrong\n\nRESP_HEADER\n{}\n\nRESP_TEXT\n{}".format( \
+        logging.error("something went wrong in 'get_endpoints'\n\nRESP_HEADER\n{}\n\nRESP_TEXT\n{}".format( \
                 resp.headers, resp.text ))
     
 #
@@ -144,8 +162,8 @@ def get_alerts( tenant_id, url_api, product=None ):
 #
 # Endpoint Check
 #
-def check_endpoints():
-    # initialize vars
+def check_endpoints( tenant_id, api ):
+    # init vars
     final_rcode=0
     status_count={}
     warn = {
@@ -157,11 +175,7 @@ def check_endpoints():
         'bad' :        args.crit_ep_bad
         }
 
-    # get API endpoint for tenant
-    api = apihost_of_tenant( args.tenant_id, tenant_list )
-    # fetch endpoint data
-    all_endpoints=get_endpoints( args.tenant_id, api )
-
+    all_endpoints=get_endpoints( tenant_id, api )
 
     for ep in all_endpoints:
         if ep.get('health'):
@@ -198,13 +212,17 @@ def check_endpoints():
 
     result_string = get_rstring( final_rcode )
     print( "Endpoint overall-health is " + result_string + ': ' + result_message + "\n" )
-    print( result_detail )
+    if args.print_detail:
+        print( result_detail )
+
     return final_rcode
 
 #
 # Alert Check
 #
-def check_alerts( device_type ):
+def check_alerts( tenant_id, api, device_type ):
+    # init vars
+    final_rcode=0
     final_rcode=0
     status_count={}
     warn = {
@@ -218,10 +236,8 @@ def check_alerts( device_type ):
         'low'   : args.crit_alert_low
         }
 
-    api = apihost_of_tenant( args.tenant_id, tenant_list )
-    alerts = get_alerts( args.tenant_id, api, device_type )
-
     pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
+    alerts = get_alerts( tenant_id, api, device_type )
 
     for alert in alerts:
         severity = alert.get('severity')
@@ -250,10 +266,12 @@ def check_alerts( device_type ):
                                 pp.pformat( status_count[severity]['hosts'] ) )
 
     result_string = get_rstring( final_rcode )
-    print( "Alerts for {} is {}: ".format( device_type, result_string) + result_message + "\n" )
+    print( "Alerts for device-type '{}' is {}: ".format( device_type, result_string) + result_message + "\n" )
     if args.print_detail:
         print( result_detail )
+
     return final_rcode
+
 
 # # #  # #  # #  # #  # #  # #  # #  # #  # #  # #  # #  # # 
 #
@@ -264,21 +282,25 @@ def check_alerts( device_type ):
 # parse command line parameters
 
 cli = argparse.ArgumentParser \
-    (description=' read and parse REST-API responses')
+    (description='Check Sophos Cloud Services for Endpoint-Status or Alerts')
 
-cli.add_argument('--id', dest='client_id',         help='Client ID')
-cli.add_argument('--secret', dest='client_secret', help='Client Secret')
+cli.add_argument('--id', dest='client_id',\
+        required=True, help='Client ID')
+cli.add_argument('--secret', dest='client_secret',\
+        required=True, help='Client Secret')
 cli.add_argument('--tenant-search', dest='tenant_filter', \
-        help='select first tenant found by this substring')
-cli.add_argument('--tenant-id', dest='tenant_id',  help='Use this Tenant-ID for checks')
-cli.add_argument('--key',  dest='api_key',         help='API-Key (Bearer-Token)')
+        help='select first tenant found by this substring. Only useful with --atype=partner')
+cli.add_argument('--tenant-id', dest='tenant_id',\
+        help='Use this Tenant-ID for checks. Only useful with --atype=partner')
 cli.add_argument('-v', dest='print_detail', action='store_true', \
-        help='append details to check output')
+        help='Verbose output: append details to check result')
 cli.add_argument('--mode', dest='check_mode', default='ep', \
         help='ep|alert')
+cli.add_argument('--atype', dest='account_type', default='customer', \
+        help='Account Type: \'customer\' or \'partner\'. Default \'customer\'' )
 cli.add_argument('--devtype', dest='device_type', default='firewall', \
         help='check devices of this type (e.g. "firewall", "server"). Only has effect\
-              on check mode "alert"')
+              with "--mode alert", default is "firewall"')
 #cli.add_argument('--detail-severity',  dest='detail_severity', default=None )
 cli.add_argument('--warn-ep-sus',  dest='warn_ep_sus', default=None, \
         type=int, help='Warn threshold for status suspicious')
@@ -300,7 +322,7 @@ cli.add_argument('--crit-alert-medium', dest='crit_alert_medium', default=None, 
         type=int, help='Crit threshold for "medium" alerts')
 cli.add_argument('--crit-alert-low', dest='crit_alert_low', default=None, \
         type=int, help='Crit threshold for "low" alerts')
-cli.add_argument('--version', action='version', version='%(prog)s 0.1')
+cli.add_argument('--version', action='version', version='%(prog)s ' + program_version)
 cli.add_argument('--debug', action='store_true')
 
 args = cli.parse_args()
@@ -310,41 +332,40 @@ url_id  = 'https://id.sophos.com'
 url_api = 'https://api.central.sophos.com'
 rcode = 0
 
-# select authentication method
-if args.client_id and args.client_secret:
-    #credentials=(args.user, args.pw)
-    auth_method='basic'
-elif args.api_key:
-    credentials=args.api_key
-    auth_method='api_key'
-else:
-    logging.error('no authentication credentials found, use either --id and --secret, or --key')
-    sys.exit(5)
-
-
 # Login and fetch data
 access_token = get_token( args.client_id, args.client_secret )
-(myid, api) = whoami( access_token )
-tenant_list = get_tenants( access_token, myid, api )
+(myid, main_api) = whoami( access_token )
 
-if not args.tenant_id:
+if not args.tenant_id and args.account_type == 'partner':
     #
     # Support and Test Mode; no checks here
     #
+    tenant_list = get_tenants( access_token, myid, main_api )
     if args.tenant_filter:
+        print("You did not provide tenant-id. Here's a list of tenants according to your search filter:")
         print( search_tenant( tenant_list, args.tenant_filter ), end='' )
+        print("----- EOL -----")
     else:
-        print("You did not provide any tenant information. Here's a list of tenants:")
+        print("You did not provide a tenant-id. Here's a list of tenants:")
         print( list_tenants( tenant_list), end='' )
-        print("----- End OF List -----")
+        print("----- EOL -----")
 else:
-    #
-    # select check
-    #
+    # Account type: partner or 'normal'/customer
+    if args.account_type == 'partner':
+        tenant_id = args.tenant_id
+        tenant_list = get_tenants( access_token, myid, main_api )
+        current_api = apihost_of_tenant ( tenant_id, tenant_list )
+    else:
+        tenant_id = myid
+        current_api = main_api
+
+    # Select check type to perform
     if ( args.check_mode == 'ep' ):
-        rcode = check_endpoints()
+        rcode = check_endpoints( tenant_id, current_api )
+
     elif ( args.check_mode == 'alert'):
-        rcode = check_alerts( args.device_type)
+        rcode = check_alerts( tenant_id, current_api, args.device_type)
+
     else:
         logging.error('unknown check mode: ' + check_mode)
 
