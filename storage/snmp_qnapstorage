@@ -421,6 +421,7 @@ function get_snmp_and_process {
 
     #### building indexes
     #
+    #
 
     # build element index
     for key in ${!snmpData[@]} ; do
@@ -433,12 +434,6 @@ function get_snmp_and_process {
     for element in  ${elementIndex[@]}
     do
         nameMap[${snmpData[${baseOID}.${id[name]}.$element]}]=${snmpData[${baseOID}.${id[index]}.$element]}
-    done
-
-    # build element map
-    for eName in ${!nameMap[@]}
-    do
-        element=${nameMap[$eName]}
     done
 
     #
