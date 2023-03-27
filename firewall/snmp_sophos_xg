@@ -6,6 +6,9 @@
 #
 # Author: msander
 #
+# Version: 0.2  2023-03-27
+#   fixed perfdata output
+#
 # Version: 0.1  2023-03-27
 #   first version rolled out for testing
 #
@@ -122,8 +125,7 @@ function mode_string() {
     local string
     case $mode in 
         cpu) string='CPU' ;;
-        volume) string='Volumes' ;;
-        arget) string='Targets' ;;
+        license) string='Licenses' ;;
     esac
     echo $string
 }
@@ -194,6 +196,8 @@ function cpu_check {
 	local cpu_sum=0
 	local cpu_avg
 	local cpu_count=${#elementList[@]}
+	local cpu_warn=${warn:-0}
+	local cpu_crit=${crit:-0}
 
 	if [ $cpu_count -gt 1 ] ; then
 		# sum up cpu percents
@@ -208,11 +212,11 @@ function cpu_check {
 	glob_rcode=$( set_globalstate 0 )
         # text output
     outmsg+="Average CPU utiliziation ${cpu_avg}%"
-    perfdata+="avg_cpu=${cpu_avg}"
+    perfdata+="avg_cpu=${cpu_avg}%;$cpu_warn"
 
 	if [ $cpu_count -gt 1 ] ; then
 		for cpu_index in ${!elementList[@]} ; do
-			perfdata+=", cpu_${cpu_index}=${elementList[$cpu_index]}"
+			perfdata+=" cpu_${cpu_index}=${elementList[$cpu_index]}%;$cpu_warn;$cpu_crit"
 		done
 	fi
 }
