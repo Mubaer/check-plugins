@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
 
-# This plugin retrieves volume, storagepool and RAID infomration from
-# QNAP devices using SNMP. It takes into account the QNAP's status of
-# volumes and pools and merges it with the CLI thesholds
+# This plugin retrieves cpu or license status from Sophos XG firewalls
 #
 # Author: msander
+#
+# Version: 0.3  2023-03-28
+#   new feature and small fixes
+#
+#    - Added complicated new feature "Sophos Licenses"
+#    - Fixed a bug where SNMP-Data was truncated (spaces in output)
+#    - Added a 'dbg_msg' function for debugging output to stderr
+#    - Fixed indentation
+#
+## Version: 0.2  2023-03-27
+#   fixed perfdata output
 #
 # Version: 0.1  2023-03-27
 #   first version rolled out for testing
