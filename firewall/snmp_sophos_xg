@@ -6,9 +6,6 @@
 #
 # Author: msander
 #
-# Version: 0.2  2023-03-27
-#   fixed perfdata output
-#
 # Version: 0.1  2023-03-27
 #   first version rolled out for testing
 #
@@ -53,14 +50,20 @@ done
 #######
 
 function check_arguments {
-	if [ -z "$hostname" ] ; then
-		echo "$0 required argument -H <hostname> missing"
-		exit 3
-	elif [ -z "$authuser" -a -z "$community" ] ; then
-		echo "$0 SNMP credentials missing: either -C <community> or snmp V3:"
-		echo "	-u <authuser> -a <authproto> -A <authpass> -x <secproto> -X <secpass> -l <seclevel>"
-		exit 3
-	fi
+        if [ -z "$hostname" ] ; then
+                echo "$0 required argument -H <hostname> missing"
+                exit 3
+        elif [ -z "$authuser" -a -z "$community" ] ; then
+                echo "$0 SNMP credentials missing: either -C <community> or snmp V3:"
+                echo "  -u <authuser> -a <authproto> -A <authpass> -x <secproto> -X <secpass> -l <seclevel>"
+                exit 3
+        fi
+}
+
+function dbg_msg {
+    if [ "$debug" ] ; then
+        >&2 echo "DEBUG: $1"
+    fi
 }
 
 
@@ -130,6 +133,28 @@ function mode_string() {
     echo $string
 }
 
+function date_to_epoch {
+    # Try to convert various date formats to epoch seconds
+
+    local regex[0]='[A-Z][a-z]{2} +[0-9]+ [0-9]{4}"'
+    local datefmt[0]='"%b %e %Y"'
+    local regex[1]='([A-Z][a-z]{2} ){2} *[0-9]+ ([0-9]{2}:){2}[0-9]{2} [0-9]{4}'
+    local datefmt[1]='"%a %b %e %T %Y"'
+    local input="$1"
+    local epoch=0
+
+    for re in 0 1 ; do
+        if [[ "$input" =~ ${regex[$re]} ]] ; then
+        dbg_msg "Date $input matches ${regex[$re]}"
+            epoch=$( date -j -f "${datefmt[$re]}" "$input" +%s )
+    else
+        dbg_msg "Date $input NOT matches ${regex[$re]}"
+    fi
+    done
+
+    echo $epoch
+}
+
 # generate human readable bytes
 function hr_bytes() {
     local rawbyte=$1
@@ -191,36 +216,6 @@ function raid_byfilter() {
     done
 }
 
-function cpu_check {
-	local cpu_percent
-	local cpu_sum=0
-	local cpu_avg
-	local cpu_count=${#elementList[@]}
-	local cpu_warn=${warn:-0}
-	local cpu_crit=${crit:-0}
-
-	if [ $cpu_count -gt 1 ] ; then
-		# sum up cpu percents
-		for cpu_item in ${elementList[@]} ; do
-			cpu_sum=$(( cpu_sum + cpu_item ))
-		done
-		cpu_avg=$(( cpu_sum / cpu_count ))
-	else
-		cpu_avg=${elementList[0]}
-	fi
-
-	glob_rcode=$( set_globalstate 0 )
-        # text output
-    outmsg+="Average CPU utiliziation ${cpu_avg}%"
-    perfdata+="avg_cpu=${cpu_avg}%;$cpu_warn"
-
-	if [ $cpu_count -gt 1 ] ; then
-		for cpu_index in ${!elementList[@]} ; do
-			perfdata+=" cpu_${cpu_index}=${elementList[$cpu_index]}%;$cpu_warn;$cpu_crit"
-		done
-	fi
-}
-
 function get_snmp {
     #
     # Compose snmp command
@@ -232,14 +227,14 @@ function get_snmp {
         $community $authuser $privproto $privpass $seclevel $authproto $authpass \
         $hostname  $baseOID"
 
-    if [ -n "$debug" ] ; then echo "debug snmpcmd: $snmpcmd" ; fi
+    dbg_msg "debug snmpcmd: $snmpcmd"
 
 
     # First of all, get the SNMP-Data
     snmpResponse=$($snmpcmd 2>&1)
     snmpexit=$?
 
-    if [ -n "$debug" ] ; then echo "debugsnmpresponse: $snmpResponse" ; fi
+    dbg_msg "debugsnmpresponse: $snmpResponse"
 
     if [ $snmpexit -ne 0 ] ; then
         echo "(UNKNOWN): Problem fetching SNMP data."
@@ -248,7 +243,7 @@ function get_snmp {
         exit 3
     fi
 
-    while read oid value unit
+    while read oid value
     do 
         snmpData[$oid]="$value"
     done <<< "$snmpResponse"
@@ -282,9 +277,115 @@ function process_snmp_noindex {
     # build element list
     local element_counter=0
     for element in ${snmpData[@]} ; do
-	    elementList[$element_counter]=$element
-	    : $(( element_counter++ ))
+            elementList[$element_counter]=$element
+            : $(( element_counter++ ))
     done
+}
+
+function cpu_check {
+    local cpu_percent
+    local cpu_sum=0
+    local cpu_avg
+    local cpu_count=${#elementList[@]}
+    local cpu_warn=${warn:-0}
+    local cpu_crit=${crit:-0}
+
+    if [ $cpu_count -gt 1 ] ; then
+        # sum up cpu percents
+        for cpu_item in ${elementList[@]} ; do
+            cpu_sum=$(( cpu_sum + cpu_item ))
+        done
+        cpu_avg=$(( cpu_sum / cpu_count ))
+    else
+        cpu_avg=${elementList[0]}
+    fi
+
+    glob_rcode=$( set_globalstate 0 )
+    # text output
+    outmsg+="Average CPU utiliziation ${cpu_avg}%"
+    perfdata+="avg_cpu=${cpu_avg}%;$cpu_warn"
+
+    if [ $cpu_count -gt 1 ] ; then
+        for cpu_index in ${!elementList[@]} ; do
+            perfdata+=" cpu_${cpu_index}=${elementList[$cpu_index]}%;$cpu_warn;$cpu_crit"
+        done
+    fi
+}
+
+function license_check {
+    local licenseNames=( Base NetProtect WebProtect MailProtect WebServer Sandstorm EnhancedSupport EnhancedPlusSupport )
+    local subOID
+    local licStatus
+    # Beware! We need negative values here
+    local lic_warn=-${warn:-30}
+    local lic_crit=-${crit:-7}
+    local lic_rcode=0
+    local loop_rcode=0
+    local lic_data_invalid=0
+    local licenseCounter[1]=0
+    local licenseCounter[2]=0
+    local licenseCounter[3]=0
+    local licenseCounter[4]=0
+    local statusNames=( dummy trial unsubscribed subscribed expired )
+    # Seconds per Day
+    local s2d=86400
+
+    local epoch_current=`date +%s`
+
+    details+='Licenses in detail:\n'
+
+    for licIndex in ${!licenseNames[@]}; do
+            # Skip 'Base' license because it has no usabel value
+            if [ $licIndex -eq 0 ] ; then continue ; fi
+
+            # License Status
+            subOID="${baseOID}.$(( licIndex +1 )).1.0"
+            licStatus=${snmpData[$subOID]}
+            licenseCounter[$licStatus]=$(( licenseCounter[$licStatus] + 1 ))
+
+
+            # Expiry Date
+            subOID="${baseOID}.$(( licIndex +1 )).2.0"
+            human_expire=${snmpData[$subOID]}
+
+            # Special Case invalid date from snmp
+            if [ "$human_expire" == '"fail"' -o "$human_expire" == '' ] ; then 
+                lic_data_invalid=1
+        else
+          lic_data_invalid=0
+        fi
+
+        if [ $lic_data_invalid -ne 1 ] ; then
+            epoch_expire=$( date_to_epoch "$human_expire" )
+            days_til_expire=$(( (epoch_expire - epoch_current) / s2d ))
+
+            # skip state calculations when status is 'expired/4' anyway
+            if [ $licStatus -eq 4 ] ; then
+                loop_rcode=2
+            else 
+                loop_rcode=$( calc_state $(( -$days_til_expire )) $lic_warn $lic_crit )
+            fi
+
+            # different output text when exp. until is negative
+            if [ $days_til_expire -gt 0 ] ; then
+                expday_text='days until '
+                exp_text='expires'
+            else
+                expday_text='days since '
+                exp_text='expired'
+            fi
+
+            glob_rcode=$( set_globalstate $loop_rcode )
+            loop_line=$( printf "%-10s %4s $expday_text %19s $exp_text on $human_expire, status \"${statusNames[$licStatus]}\""  `state_string $loop_rcode` $days_til_expire "${licenseNames[$licIndex]}" )
+
+        else
+            loop_line=$( printf "%-10s unusable expiration date for %19s, status \"${statusNames[$licStatus]}\"\n" '(UNKNOWN):' "${licenseNames[$licIndex]}" )
+        fi
+
+        details+="   $loop_line\n"
+    done
+
+    outmsg+="Number of Licenses: Trial = ${licenseCounter[1]}, Unsubscribed = ${licenseCounter[2]}, Subscribed = ${licenseCounter[3]}, Expired = ${licenseCounter[4]}"
 }
 
 #
@@ -312,8 +413,14 @@ case $mode in
     cpu)
         baseOID='.1.3.6.1.2.1.25.3.3.1.2'
         get_snmp
-	process_snmp_noindex
-	cpu_check
+        process_snmp_noindex
+        cpu_check
+    ;;
+
+        license)
+        baseOID='.1.3.6.1.4.1.2604.5.1.5'
+        get_snmp
+        license_check
     ;;
     
     #volume)
@@ -341,3 +448,6 @@ if [ -n "$perfdata" ] ; then echo -en "|$perfdata" ; fi
 echo
 
 exit $glob_rcode
+
+
+#vim: set ts=4 expandtab sw=4
