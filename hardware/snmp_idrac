@@ -71,6 +71,18 @@ function percent() {
     $bc -l <<< "scale=4; r( ($part / $total * 100), 0 )"
 }
 
+function convertsecs {
+    local d
+    local h
+    local m
+    local s
+    ((d=${1}/86400))
+    ((h=${1}%86400/3600))
+    ((m=(${1}%3600)/60))
+    ((s=${1}%60))
+    printf "%3s days %02d:%02d:%02d\n" $d $h $m $s
+}
+
 function calc_state() {
     local value=$1;local warn=$2;local crit=$3;local rcode
 
@@ -258,6 +270,70 @@ function process_snmp_noindex {
     done
 }
 
+function idrac_status {
+    local enum=$1
+    local map=( dummy other unknown ok nonCritical critical nonRecoverable )
+    if [ -z "${map[$enum]}" ] ; then
+        dbg_msg "unknown state: $enum" ; exit 10
+    fi
+    echo "${map[$enum]}"
+}
+
+function idrac_state {
+    local enum=$1
+    local map=( dummy other unknown off on )
+    if [ -z "${map[$enum]}" ] ; then
+        dbg_msg "unknown state: $enum" ; exit 10
+    fi
+    echo "${map[$enum]}"
+}
+
+function check_globalstatus {
+    local oid_names[1]='Global System Status'
+    local oid_names[2]='LCD Status'
+    local oid_names[3]='Storage Status'
+    local oid_names[4]='Power State'
+    local curOID
+    local curStat
+    local loop_status
+    local loop_line
+
+    details+="Details:\n"
+    outmsg='iDARC overall status'
+    for key in ${!oid_names[@]} ; do
+        curOID="${baseOID}.$key.0"
+        if [ $key -ne 4 ] ; then 
+            # Other Status
+            if [ ${snmpData[$curOID]} -lt 4 ]  ; then 
+                loop_status=0
+            elif [ ${snmpData[$curOID]} -eq 4 ] ; then
+                loop_status=1
+            elif [ ${snmpData[$curOID]} -gt 4 ] ; then
+                loop_status=2
+            fi
+            curStat=`idrac_status ${snmpData[$curOID]}`
+
+        else
+            # Power State
+            if [ ${snmpData[$curOID]} -eq 4 ]  ; then 
+                loop_status=0
+            elif [ ${snmpData[$curOID]} -lt 4 ] ; then
+                loop_status=1
+            fi
+            curStat=`idrac_state ${snmpData[$curOID]}`
+        fi
+        loop_line=$( printf "%12s %-22s is %-15s" `state_string $loop_status` \
+            "${oid_names[$key]}"  ${curStat^^} )
+        details+="  $loop_line\n"
+        glob_rcode=$( set_globalstate $loop_status ) 
+    done
+}
+
+function check_uptime {
+    uptime_sec=${snmpData[$baseOID]}
+    outmsg="Chassis Uptime `convertsecs $uptime_sec`"
+    perfdata="uptime_sec=${uptime_sec}s"
+}
 
 #
 # MAIN
@@ -266,7 +342,7 @@ function process_snmp_noindex {
 #
 # set default values
 #
-mode=${mode:=cpu}
+mode=${mode:=globalstatus}
 filter=${filter:=.}
 tout=${tout:=20}
 
@@ -288,16 +364,11 @@ case $mode in
         check_globalstatus
     ;;
 
-    #volume)
-    #    baseOID='.1.3.6.1.4.1.55062.1.10.9.1'
-    #    id[index]=1
-    #    id[name]=8
-    #    id[size]=3
-    #    id[free]=4
-    #    id[status]=5
-    #    get_snmp_and_process 
-    #    storage_byfilter $filter
-    #;;
+    uptime)
+        baseOID='.1.3.6.1.4.1.674.10892.5.2.5.0'
+        get_snmp
+        check_uptime
+    ;;
     
     *)
         echo "(UNKNOWN): mode '-m $mode' not known" ; exit 3 ;;
