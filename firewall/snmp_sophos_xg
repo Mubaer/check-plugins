@@ -322,7 +322,7 @@ function cpu_check {
 }
 
 function license_check {
-    local licenseNames=( Base NetProtect WebProtect MailProtect WebServer Sandstorm EnhancedSupport EnhancedPlusSupport )
+    local licenseNames=( Base NetProtect WebProtect MailProtect WebServer Sandstorm EnhancedSupport EnhancedPlusSupport  C-Orchestration )
     local subOID
     local licStatus
     # Beware! We need negative values here
@@ -335,7 +335,7 @@ function license_check {
     local licenseCounter[2]=0
     local licenseCounter[3]=0
     local licenseCounter[4]=0
-    local statusNames=( dummy trial unsubscribed subscribed expired )
+    local statusNames=( none trial unsubscribed subscribed expired )
     # Seconds per Day
     local s2d=86400
 
@@ -352,7 +352,6 @@ function license_check {
             licStatus=${snmpData[$subOID]}
             licenseCounter[$licStatus]=$(( licenseCounter[$licStatus] + 1 ))
 
-
             # Expiry Date
             subOID="${baseOID}.$(( licIndex +1 )).2.0"
             human_expire=${snmpData[$subOID]}
@@ -361,7 +360,7 @@ function license_check {
             if [ "$human_expire" == '"fail"' -o "$human_expire" == '' ] ; then 
                 lic_data_invalid=1
         else
-          lic_data_invalid=0
+            lic_data_invalid=0
         fi
 
         if [ $lic_data_invalid -ne 1 ] ; then
@@ -375,7 +374,7 @@ function license_check {
                 loop_rcode=$( calc_state $(( -$days_til_expire )) $lic_warn $lic_crit )
             fi
 
-            # different output text when exp. until is negative
+            # different output text when exp. date is negative
             if [ $days_til_expire -gt 0 ] ; then
                 expday_text='days until '
                 exp_text='expires'
@@ -388,7 +387,7 @@ function license_check {
             loop_line=$( printf "%-10s %4s $expday_text %19s $exp_text on $human_expire, status \"${statusNames[$licStatus]}\""  `state_string $loop_rcode` $days_til_expire "${licenseNames[$licIndex]}" )
 
         else
-            loop_line=$( printf "%-10s unusable expiration date for %19s, status \"${statusNames[$licStatus]}\"\n" '(UNKNOWN):' "${licenseNames[$licIndex]}" )
+            loop_line=$( printf "(no license?): no date for  %19s expiration date unknown, status \"${statusNames[$licStatus]}\"\n" "${licenseNames[$licIndex]}" )
         fi
 
         details+="   $loop_line\n"
