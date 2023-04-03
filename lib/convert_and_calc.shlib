@@ -1,0 +1,46 @@
+#
+# Check Plugin Functions for converting and calculation data
+#
+# Author: msander
+#   Version 0.1 Mon Apr  3 16:35:48 CEST 2023
+
+# Print human readable representation of seconds
+function second_to_hr() {
+    local d
+    local h
+    local m
+    local s
+    ((d=${1}/86400))
+    ((h=${1}%86400/3600))
+    ((m=(${1}%3600)/60))
+    ((s=${1}%60))
+    printf "%3s days %02d:%02d:%02d\n" $d $h $m $s
+}
+
+# generate human readable bytes
+function hr_bytes() {
+    local rawbyte=$1
+    local bstr=Byte
+
+    # more than 10 TB
+    if [ $rawbyte -gt 10000000000000 ] ;then
+        hrbyte="$(( $rawbyte>>40 )) T$bstr"
+
+    # more than 10 GB
+    elif [ $rawbyte -gt 10000000000 ] ;then
+        hrbyte="$(( $rawbyte>>30 )) G$bstr"
+
+    # more than 10 MB
+    elif [ $rawbyte -gt 10000000 ] ;then
+        hrbyte="$(( $rawbyte>>20 )) M$bstr"
+    fi
+
+    echo $hrbyte
+}
+
+function percent() {
+    local total=$1
+    local part=$2
+    $bc -l <<< "scale=4; r( ($part / $total * 100), 0 )"
+}
+

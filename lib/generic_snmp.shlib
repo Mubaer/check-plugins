@@ -1,0 +1,17 @@
+#
+# Check Plugin Functions for SNMP-Checks
+#
+# Author: msander
+#   Version 0.1 Mon Apr  3 16:35:48 CEST 2023
+
+function check_arguments {
+        if [ -z "$hostname" ] ; then
+                echo "$0 required argument -H <hostname> missing"
+                exit 3
+        elif [ -z "$authuser" -a -z "$community" ] ; then
+                echo "$0 SNMP credentials missing: either -C <community> or snmp V3:"
+                echo "  -u <authuser> -a <authproto> -A <authpass> -x <secproto> -X <secpass> -l <seclevel>"
+                exit 3
+        fi
+}
+
