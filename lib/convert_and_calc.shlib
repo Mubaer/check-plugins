@@ -14,7 +14,7 @@ function second_to_hr() {
     ((h=${1}%86400/3600))
     ((m=(${1}%3600)/60))
     ((s=${1}%60))
-    printf "%3s days %02d:%02d:%02d\n" $d $h $m $s
+    printf "%3s days %02dh %02dm %02ds\n" $d $h $m $s
 }
 
 # generate human readable bytes
