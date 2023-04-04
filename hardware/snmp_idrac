@@ -43,95 +43,20 @@ while getopts "H:C:u:x:X:a:A:l:w:c:m:f:F:t:Bhd" OPTION ; do
     esac
 done
 
-#######
-# Functions
-#######
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Load library functions
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-function check_arguments {
-        if [ -z "$hostname" ] ; then
-                echo "$0 required argument -H <hostname> missing"
-                exit 3
-        elif [ -z "$authuser" -a -z "$community" ] ; then
-                echo "$0 SNMP credentials missing: either -C <community> or snmp V3:"
-                echo "  -u <authuser> -a <authproto> -A <authpass> -x <secproto> -X <secpass> -l <seclevel>"
-                exit 3
-        fi
-}
+callpath="$(dirname "$0")"
+libdir="${callpath}/../lib"
 
-function dbg_msg {
-    if [ "$debug" ] ; then
-        >&2 echo "DEBUG: $1"
-    fi
-}
+source $libdir/generic_plugin.shlib
+source $libdir/generic_snmp.shlib
+source $libdir/convert_and_calc.shlib
 
-
-function percent() {
-    local total=$1
-    local part=$2
-    $bc -l <<< "scale=4; r( ($part / $total * 100), 0 )"
-}
-
-function convertsecs {
-    local d
-    local h
-    local m
-    local s
-    ((d=${1}/86400))
-    ((h=${1}%86400/3600))
-    ((m=(${1}%3600)/60))
-    ((s=${1}%60))
-    printf "%3s days %02d:%02d:%02d\n" $d $h $m $s
-}
-
-function calc_state() {
-    local value=$1;local warn=$2;local crit=$3;local rcode
-
-    if [ $value -gt $crit ] ; then
-        rcode=2
-    elif [ $value -gt $warn ] ; then
-        rcode=1
-    else
-        rcode=0
-    fi
-    echo $rcode
-}
-
-# take into account the current global return code
-function calc_globalstate() {
-    local value=$1;local warn=$2;local crit=$3;local rcode
-
-    rcode=$( calc_state $value $warn $crit )
-
-    if [ $rcode -le $glob_rcode ] ; then
-        rcode=$glob_rcode
-    else
-        rcode=$rcode
-    fi
-    echo $rcode
-}
-
-function set_globalstate() {
-    local rcode=$1
-
-    if [ $rcode -le $glob_rcode ] ; then
-        rcode=$glob_rcode
-    else
-        rcode=$rcode
-    fi
-    echo $rcode
-}
-
-function state_string() {
-    local rcode=$1
-    local string
-    case $rcode in 
-        0) string='(OK):' ;;
-        1) string='(WARNING):' ;;
-        2) string='(CRITICAL):' ;;
-        3) string='(UNKNOWN):' ;;
-    esac
-    echo $string
-}
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Local functions
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 function mode_string() {
     local mode=$1
@@ -141,67 +66,6 @@ function mode_string() {
         license) string='Licenses' ;;
     esac
     echo $string
-}
-
-# generate human readable bytes
-function hr_bytes() {
-    local rawbyte=$1
-    local bstr=Byte
-
-    # more than 10 TB
-    if [ $rawbyte -gt 10000000000000 ] ;then
-        hrbyte="$(( $rawbyte>>40 )) T$bstr"
-
-    # more than 10 GB
-    elif [ $rawbyte -gt 10000000000 ] ;then
-        hrbyte="$(( $rawbyte>>30 )) G$bstr"
-
-    # more than 10 MB
-    elif [ $rawbyte -gt 10000000 ] ;then
-        hrbyte="$(( $rawbyte>>20 )) M$bstr"
-    fi
-
-    echo $hrbyte
-}
-
-function raid_byfilter() {
-    # Print Out Data for Elements, filtered by Name
-    # By default, select all elements
-
-    local filter=$1
-
-    for eName in ${!nameMap[@]}
-    do
-        if [[  "$eName" =~ $filter ]]
-        then
-            outElements+=(${nameMap[$eName]})
-        fi
-    done
-
-    local loop_rcode=0
-    local loop_state
-    for element in  ${outElements[@]}
-    do
-        name=${snmpData[${baseOID}.${id[name]}.$element]}
-        size_bytes=${snmpData[${baseOID}.${id[size]}.$element]}
-        raid_status=${snmpData[${baseOID}.${id[status]}.$element]}
-
-        # Check Status
-        case $raid_status in
-            '"Ready"')
-                loop_rcode=0;;
-            '"Degraded"')
-                loop_rcode=1;;
-        esac
-        loop_state=$( state_string $loop_rcode )
-        glob_rcode=$( set_globalstate $loop_rcode ) 
-
-        # text output
-        outmsg+="RAID $name: Capacity $(( size_bytes>>30 )) GB, Status $raid_status; "
-        details+="$loop_state $name\n"
-        details+="  Size:   $( hr_bytes $size_bytes )\n"
-        details+="  Status: $raid_status\n\n"
-    done
 }
 
 function get_snmp {
@@ -331,7 +195,7 @@ function check_globalstatus {
 
 function check_uptime {
     uptime_sec=${snmpData[$baseOID]}
-    outmsg="Chassis Uptime `convertsecs $uptime_sec`"
+    outmsg="Chassis Uptime `second_to_hr $uptime_sec`"
     perfdata="uptime_sec=${uptime_sec}s"
 }
 
