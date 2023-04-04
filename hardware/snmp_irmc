@@ -1,0 +1,282 @@
+#!/usr/bin/env bash
+
+# This plugin retrieves various informations from Fujitsu iRMC Boards.
+#
+# Author: msander
+#
+# Version: 0.1  2023-04-04
+#   first test version
+#
+
+# Define Vars
+declare -A snmpData
+declare -A id
+declare -A nameMap
+declare -a elementList
+
+glob_rcode=0
+
+#
+# CLI Parsing
+#
+
+OPTERR=1
+while getopts "H:C:u:x:X:a:A:l:w:c:m:f:F:t:Bhd" OPTION ; do
+    case "${OPTION}" in
+        H) hostname=${OPTARG}       ;;
+        C) community="-c ${OPTARG}" ;;
+        u) authuser="-u ${OPTARG}"  ;;
+        a) authproto="-a ${OPTARG}" ;;
+        A) authpass="-A ${OPTARG}"  ;;
+        x) privproto="-x ${OPTARG}" ;;
+        X) privpass="-X ${OPTARG}"  ;;
+        l) seclevel="-l ${OPTARG}"  ;;
+        w) warn=${OPTARG}           ;;
+        c) crit=${OPTARG}           ;;
+        m) mode=${OPTARG}           ;;
+        f) filter=${OPTARG}         ;;
+        F) neg_filter=${OPTARG}     ;;
+        t) tout=${OPTARG}           ;;
+        B) nobulk=1                 ;;
+        h) helpme=1                 ;;
+        d) debug=1                  ;;
+    esac
+done
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Load library functions
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+callpath="$(dirname "$0")"
+libdir="${callpath}/../lib"
+
+source $libdir/generic_plugin.shlib
+source $libdir/generic_snmp.shlib
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Local functions
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+function mode_string() {
+    local mode=$1
+    local string
+    case $mode in 
+        cpu) string='CPU' ;;
+        license) string='Licenses' ;;
+    esac
+    echo $string
+}
+
+function check_subsystem() {
+    # Print Out Data for Elements, filtered by Name
+    # By default, select all elements
+
+    # function mode
+    local fmode=$1
+    local filter=$2
+
+    for eName in ${!nameMap[@]}
+    do
+        if [[  "$eName" =~ $filter ]]
+        then
+            outElements+=(${nameMap[$eName]})
+        fi
+    done
+
+    # calculate longest string (for output format)
+    local maxLengthName=0
+    local disp_name
+    for element in ${outElements[@]}
+    do
+        disp_name=${snmpData[${baseOID}.${id[displayname]}.$element]}
+        if [ ${#disp_name} -gt $maxLengthName ] ;then
+            maxLengthName=${#disp_name}
+        fi
+    done
+
+    #maxLengthName=$(( maxLengthName +1 ))
+
+    local loop_rcode=0
+    local loop_state
+    local name
+    local el_status
+    details+="$fmode status details:\n"
+    for element in  ${outElements[@]}
+    do
+        el_status=${snmpData[${baseOID}.${id[status]}.$element]}
+        disp_name=${snmpData[${baseOID}.${id[displayname]}.$element]}
+        #components=${snmpData[${baseOID}.${id[components]}.$element]}
+
+        # Check Status
+        case $el_status in
+            [15])
+                loop_rcode=0;;
+            2)
+                loop_rcode=1;;
+            [34])
+                loop_rcode=2;;
+        esac
+        loop_state=$( state_string $loop_rcode )
+        glob_rcode=$( set_globalstate $loop_rcode ) 
+        status_string=`irmc_subsys_status $el_status`
+
+        # don't output 'unknown' components
+        if [ $el_status -ne 5 ] ; then
+            loop_string=$( printf "\t%-11s %-${maxLengthName}s status: %s" $loop_state "$disp_name" "$status_string" )
+            # add to output
+            details+="$loop_string\n"
+        fi
+    done
+    outmsg+="iRMC $fmode Status Overview"
+}
+
+function get_snmp {
+    #
+    # Compose snmp command
+    #
+    if [ "$nobulk" ]; then walk=snmpwalk;  else walk=snmpbulkwalk; fi
+    if [ -n "$authuser" ]; then snmpv=3; else snmpv=2c; fi
+
+    snmpcmd="$walk -Onq -v $snmpv -t $tout -r 3 \
+        $community $authuser $privproto $privpass $seclevel $authproto $authpass \
+        $hostname  $baseOID"
+
+    dbg_msg "debug snmpcmd: $snmpcmd"
+
+
+    # First of all, get the SNMP-Data
+    snmpResponse=$($snmpcmd 2>&1)
+    snmpexit=$?
+
+    dbg_msg "debugsnmpresponse: $snmpResponse"
+
+    if [ $snmpexit -ne 0 ] ; then
+        echo "(UNKNOWN): Problem fetching SNMP data."
+        echo 
+        echo "SNMP Output was: $snmpResponse"
+        exit 3
+    fi
+
+    while read oid value
+    do 
+        snmpData[$oid]="$value"
+    done <<< "$snmpResponse"
+}
+
+function process_snmp_index {
+    #### building indexes
+    #
+
+    # build element index
+    for key in ${!snmpData[@]} ; do
+        if [[ $key == "$baseOID.${id[index]}"* ]] ; then
+        elementIndex+=( ${snmpData[$key]} )
+        fi
+    done
+
+    # build name map
+    for element in  ${elementIndex[@]}
+    do
+        nameMap[${snmpData[${baseOID}.${id[name]}.$element]}]=${snmpData[${baseOID}.${id[index]}.$element]}
+    done
+    #
+    #
+    #### / building indexes
+}
+
+function process_snmp_noindex {
+    #### building indexes
+    #
+
+    # build element list
+    local element_counter=0
+    for element in ${snmpData[@]} ; do
+            elementList[$element_counter]=$element
+            : $(( element_counter++ ))
+    done
+}
+
+function irmc_subsys_status {
+    local enum=$1
+    local map=( dummy ok degraded error failed unknown notPresent notManageable )
+    if [ -z "${map[$enum]}" ] ; then
+        dbg_msg "unknown state: $enum" ; exit 10
+    fi
+    echo "${map[$enum]}"
+}
+
+
+function check_uptime {
+    uptime_sec=${snmpData[$baseOID]}
+    outmsg="Chassis Uptime `convertsecs $uptime_sec`"
+    perfdata="uptime_sec=${uptime_sec}s"
+}
+
+#
+# MAIN
+#
+
+#
+# set default values
+#
+mode=${mode:=subsystems}
+filter=${filter:=.}
+tout=${tout:=20}
+
+check_arguments
+# 
+# precission calculator 'bc' compat. check
+#
+if [ -x /usr/local/bin/bc ]; then 
+    bc=/usr/local/bin/bc
+elif [ -x /usr/bin/bc ] ; then
+    bc=/usr/bin/bc
+fi
+
+case $mode in
+    subsystems)
+        baseOID='.1.3.6.1.4.1.231.2.10.2.11.3.1.1'
+        id[index]=1
+        id[name]=2
+        id[status]=3
+        id[msg]=4
+        id[components]=5
+        id[displayname]=6
+        get_snmp
+        process_snmp_index
+        check_subsystem "Subsystem" $filter
+    ;;
+
+    components)
+        baseOID='.1.3.6.1.4.1.231.2.10.2.11.4.1.1'
+        id[index]=1
+        id[name]=2
+        id[status]=3
+        id[msg]=4
+        id[displayname]=5
+        get_snmp
+        process_snmp_index
+        check_subsystem "Component" $filter
+    ;;
+    uptime)
+        baseOID='.1.3.6.1.4.1.674.10892.5.2.5.0'
+        get_snmp
+        check_uptime
+    ;;
+    
+    *)
+        echo "(UNKNOWN): mode '-m $mode' not known" ; exit 3 ;;
+esac
+
+
+#
+# Tell monitoring system what we found out
+#
+echo -en "$( state_string $glob_rcode ) $outmsg"
+if [ -n "$details" ] ; then echo -en "\n\n$details" ; fi
+if [ -n "$perfdata" ] ; then echo -en "|$perfdata" ; fi
+echo
+
+exit $glob_rcode
+
+
+#vim: set ts=4 expandtab sw=4
