@@ -4,6 +4,8 @@
 #
 # Author: msander
 #
+# Version: 0.2  2023-04-11
+#   removed useless tab in check output
 # Version: 0.1  2023-03-29
 #   first test version
 #
@@ -203,7 +205,7 @@ function get_systeminfo {
     for key in ${!oid_names[@]} ; do
         curOID="${baseOID}.$key.0"
         curValue=${snmpData[$curOID]//\"/}
-        loop_line=$( printf "\t%-${max_length}s: $curValue" "${oid_names[$key]}"  )
+        loop_line=$( printf "%-${max_length}s: $curValue" "${oid_names[$key]}"  )
         details+="$loop_line\n"
         
     done
