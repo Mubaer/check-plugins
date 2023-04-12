@@ -4,6 +4,9 @@
 #
 # Author: msander
 #
+# Version: 0.2  2023-04-11
+#   implemented 'system info' mode
+#
 # Version: 0.1  2023-04-04
 #   first test version
 #
@@ -56,15 +59,6 @@ source $libdir/generic_snmp.shlib
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Local functions
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-function mode_string() {
-    local mode=$1
-    local string
-    case $mode in 
-        cpu) string='CPU' ;;
-        license) string='Licenses' ;;
-    esac
-    echo $string
-}
 
 function check_subsystem() {
     # Print Out Data for Elements, filtered by Name
@@ -129,6 +123,27 @@ function check_subsystem() {
     outmsg+="iRMC $fmode Status Overview"
 }
 
+function get_systeminfo {
+    #declare -A oid_names
+    oid_names[1]='AgentID'
+    oid_names[2]='Company'
+    oid_names[3]='Version'
+    oid_names[4]='Build'
+    local max_length=${#oid_names[2]}
+    local loop_line
+
+    # Put firmware into the first line
+    local firmware=${snmpData[${baseOID}.3.0]}
+    outmsg="System Info of 'Remote Management Card' (Version ${firmware//\"/})"
+
+    for key in ${!oid_names[@]} ; do
+        curOID="${baseOID}.$key.0"
+        curValue=${snmpData[$curOID]//\"/}
+        loop_line=$( printf "%-${max_length}s: $curValue" "${oid_names[$key]}"  )
+        details+="$loop_line\n"
+    done
+
+}
 function get_snmp {
     #
     # Compose snmp command
@@ -257,6 +272,21 @@ case $mode in
         process_snmp_index
         check_subsystem "Component" $filter
     ;;
+
+    sysinfo)
+        #AgentInfo
+        baseOID='.1.3.6.1.4.1.231.2.10.2.2.10.1'
+        get_snmp
+        get_systeminfo
+        #TODO additionally, implement this (more detailed info)
+        #UnitInfo
+        #baseOID='.1.3.6.1.4.1.231.2.10.2.2.10.2'
+    ;;
+
+    temperatures)
+        baseOID='.1.3.6.1.4.1.231.2.10.2.2.10.5'
+    ;;
+
     uptime)
         baseOID='.1.3.6.1.4.1.674.10892.5.2.5.0'
         get_snmp
