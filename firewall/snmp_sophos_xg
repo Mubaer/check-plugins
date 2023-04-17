@@ -4,6 +4,13 @@
 #
 # Author: msander
 #
+# Version: 0.4  2023-04-17
+#   removed library functions and new features
+#
+#     - removed functions which were moved to /lib/
+#     - added feature "ha" (high availablity)
+#     - added feature "tunnel" (list vpn tunnels)
+#
 # Version: 0.3  2023-03-28
 #   new feature and small fixes
 #
@@ -54,83 +61,20 @@ while getopts "H:C:u:x:X:a:A:l:w:c:m:f:F:t:Bhd" OPTION ; do
     esac
 done
 
-#######
-# Functions
-#######
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Load library functions
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-function check_arguments {
-        if [ -z "$hostname" ] ; then
-                echo "$0 required argument -H <hostname> missing"
-                exit 3
-        elif [ -z "$authuser" -a -z "$community" ] ; then
-                echo "$0 SNMP credentials missing: either -C <community> or snmp V3:"
-                echo "  -u <authuser> -a <authproto> -A <authpass> -x <secproto> -X <secpass> -l <seclevel>"
-                exit 3
-        fi
-}
+callpath="$(dirname "$0")"
+libdir="${callpath}/../lib"
 
-function dbg_msg {
-    if [ "$debug" ] ; then
-        >&2 echo "DEBUG: $1"
-    fi
-}
+source $libdir/generic_plugin.shlib
+source $libdir/generic_snmp.shlib
+source $libdir/convert_and_calc.shlib
 
-
-function percent() {
-    local total=$1
-    local part=$2
-    $bc -l <<< "scale=4; r( ($part / $total * 100), 0 )"
-}
-
-function calc_state() {
-    local value=$1;local warn=$2;local crit=$3;local rcode
-
-    if [ $value -gt $crit ] ; then
-        rcode=2
-    elif [ $value -gt $warn ] ; then
-        rcode=1
-    else
-        rcode=0
-    fi
-    echo $rcode
-}
-
-# take into account the current global return code
-function calc_globalstate() {
-    local value=$1;local warn=$2;local crit=$3;local rcode
-
-    rcode=$( calc_state $value $warn $crit )
-
-    if [ $rcode -le $glob_rcode ] ; then
-        rcode=$glob_rcode
-    else
-        rcode=$rcode
-    fi
-    echo $rcode
-}
-
-function set_globalstate() {
-    local rcode=$1
-
-    if [ $rcode -le $glob_rcode ] ; then
-        rcode=$glob_rcode
-    else
-        rcode=$rcode
-    fi
-    echo $rcode
-}
-
-function state_string() {
-    local rcode=$1
-    local string
-    case $rcode in 
-        0) string='(OK):' ;;
-        1) string='(WARNING):' ;;
-        2) string='(CRITICAL):' ;;
-        3) string='(UNKNOWN):' ;;
-    esac
-    echo $string
-}
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Local functions
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 function mode_string() {
     local mode=$1
@@ -162,163 +106,6 @@ function date_to_epoch {
     done
 
     echo $epoch
-}
-
-# generate human readable bytes
-function hr_bytes() {
-    local rawbyte=$1
-    local bstr=Byte
-
-    # more than 10 TB
-    if [ $rawbyte -gt 10000000000000 ] ;then
-        hrbyte="$(( $rawbyte>>40 )) T$bstr"
-
-    # more than 10 GB
-    elif [ $rawbyte -gt 10000000000 ] ;then
-        hrbyte="$(( $rawbyte>>30 )) G$bstr"
-
-    # more than 10 MB
-    elif [ $rawbyte -gt 10000000 ] ;then
-        hrbyte="$(( $rawbyte>>20 )) M$bstr"
-    fi
-
-    echo $hrbyte
-}
-
-function raid_byfilter() {
-    # Print Out Data for Elements, filtered by Name
-    # By default, select all elements
-
-    local filter=$1
-
-    for eName in ${!nameMap[@]}
-    do
-        if [[  "$eName" =~ $filter ]]
-        then
-            outElements+=(${nameMap[$eName]})
-        fi
-    done
-
-    local loop_rcode=0
-    local loop_state
-    for element in  ${outElements[@]}
-    do
-        name=${snmpData[${baseOID}.${id[name]}.$element]}
-        size_bytes=${snmpData[${baseOID}.${id[size]}.$element]}
-        raid_status=${snmpData[${baseOID}.${id[status]}.$element]}
-
-        # Check Status
-        case $raid_status in
-            '"Ready"')
-                loop_rcode=0;;
-            '"Degraded"')
-                loop_rcode=1;;
-        esac
-        loop_state=$( state_string $loop_rcode )
-        glob_rcode=$( set_globalstate $loop_rcode ) 
-
-        # text output
-        outmsg+="RAID $name: Capacity $(( size_bytes>>30 )) GB, Status $raid_status; "
-        details+="$loop_state $name\n"
-        details+="  Size:   $( hr_bytes $size_bytes )\n"
-        details+="  Status: $raid_status\n\n"
-    done
-}
-
-function get_snmp {
-    #
-    # Compose snmp command
-    #
-    if [ "$nobulk" ]; then walk=snmpwalk;  else walk=snmpbulkwalk; fi
-    if [ -n "$authuser" ]; then snmpv=3; else snmpv=2c; fi
-
-    snmpcmd="$walk -Onq -v $snmpv -t $tout -r 3 \
-        $community $authuser $privproto $privpass $seclevel $authproto $authpass \
-        $hostname  $baseOID"
-
-    dbg_msg "debug snmpcmd: $snmpcmd"
-
-
-    # First of all, get the SNMP-Data
-    snmpResponse=$($snmpcmd 2>&1)
-    snmpexit=$?
-
-    dbg_msg "debugsnmpresponse: $snmpResponse"
-
-    if [ $snmpexit -ne 0 ] ; then
-        echo "(UNKNOWN): Problem fetching SNMP data."
-        echo 
-        echo "SNMP Output was: $snmpResponse"
-        exit 3
-    fi
-
-    while read oid value
-    do 
-        snmpData[$oid]="$value"
-    done <<< "$snmpResponse"
-}
-
-function process_snmp_index {
-    #### building indexes
-    #
-
-    # build element index
-    for key in ${!snmpData[@]} ; do
-        if [[ $key == "$baseOID.${id[index]}"* ]] ; then
-        elementIndex+=( ${snmpData[$key]} )
-        fi
-    done
-
-    # build name map
-    for element in  ${elementIndex[@]}
-    do
-        nameMap[${snmpData[${baseOID}.${id[name]}.$element]}]=${snmpData[${baseOID}.${id[index]}.$element]}
-    done
-    #
-    #
-    #### / building indexes
-}
-
-function process_snmp_noindex {
-    #### building indexes
-    #
-
-    # build element list
-    local element_counter=0
-    for element in ${snmpData[@]} ; do
-            elementList[$element_counter]=$element
-            : $(( element_counter++ ))
-    done
-}
-
-function cpu_check {
-    local cpu_percent
-    local cpu_sum=0
-    local cpu_avg
-    local cpu_count=${#elementList[@]}
-    local cpu_warn=${warn:-0}
-    local cpu_crit=${crit:-0}
-
-    if [ $cpu_count -gt 1 ] ; then
-        # sum up cpu percents
-        for cpu_item in ${elementList[@]} ; do
-            cpu_sum=$(( cpu_sum + cpu_item ))
-        done
-        cpu_avg=$(( cpu_sum / cpu_count ))
-    else
-        cpu_avg=${elementList[0]}
-    fi
-
-    glob_rcode=$( set_globalstate 0 )
-    # text output
-    outmsg+="Average CPU utiliziation ${cpu_avg}%"
-    perfdata+="avg_cpu=${cpu_avg}%;$cpu_warn"
-
-    if [ $cpu_count -gt 1 ] ; then
-        for cpu_index in ${!elementList[@]} ; do
-            perfdata+=" cpu_${cpu_index}=${elementList[$cpu_index]}%;$cpu_warn;$cpu_crit"
-        done
-    fi
 }
 
 function license_check {
@@ -398,6 +185,208 @@ function license_check {
     outmsg+="Number of Licenses: Trial = ${licenseCounter[1]}, Unsubscribed = ${licenseCounter[2]}, Subscribed = ${licenseCounter[3]}, Expired = ${licenseCounter[4]}"
 }
 
+function check_vpntunnel() {
+    # Print Out Data for Elements, filtered by Name
+    # By default, select all elements
+
+    local filter=$1
+
+    local name; local descr; local mode; local type
+
+    #for eName in ${!nameMap[@]}
+    #do
+    #    if [[  "$eName" =~ $filter ]]
+    #    then
+    #        outElements+=(${nameMap[$eName]})
+    #    fi
+    #done
+
+    #local loop_rcode=0
+    #local loop_state
+    for element in  ${elementList[@]}
+    do
+    loop_line=$( printf "Tunnel %s: Pol.: '%s', Mode: '%s', Type: '%s', Port '%s', Active: '%s'" \
+        "${snmpData[${baseOID}.${id[name]}.$element]}"     \
+        "${snmpData[${baseOID}.${id[policy]}.$element]}"    \
+        "${snmpData[${baseOID}.${id[mode]}.$element]}"     \
+        "${snmpData[${baseOID}.${id[type]}.$element]}"     \
+        "${snmpData[${baseOID}.${id[port]}.$element]}"     \
+        "${snmpData[${baseOID}.${id[active]}.$element]}"     \
+    )
+
+        # text output
+        #outmsg+="RAID $name: Capacity $(( size_bytes>>30 )) GB, Status $raid_status; "
+        #details+="Tunnel [$name]: Desc: $desc, Mode: $mode, Type: $type\n"
+        details+="$loop_line\n"
+    done
+    outmsg="VPN Tunnels (informative)"
+}
+
+function ha_state() {
+    local numState=$1
+    local stateName=( n/a auxiliary standAlone primary faulty ready )
+    if [ "${stateName[$numState]}" == '' ] ; then
+        dbg_msg "no name defined for status '$numState'"
+        exit 10
+    else
+        echo ${stateName[$numState]}
+    fi
+}
+
+function ha_status() {
+    local numState=$1
+    local stateName=( disabled enabled )
+    if [ "${stateName[$numState]}" == '' ] ; then
+        dbg_msg "no name defined for status '$numState'"
+        exit 10
+    else
+        echo ${stateName[$numState]}
+    fi
+}
+
+function check_ha() {
+    local keyname=( dummy HAStatus CurrentAppKey PeerAppKey CurrentHAState PeerHAState \
+                HAConfigMode LoadBalancing HAPort HACurrentIP HAPeerIP )
+    
+    local idx
+    for idx in ${!keyname[@]} ; do
+        case $idx in
+            [023])  continue;;
+            1)
+                details+="${keyname[$idx]} is $( ha_status ${snmpData[${baseOID}.$idx.0]} )\n"
+                ;;
+            [45])
+                details+="${keyname[$idx]} is $( ha_state ${snmpData[${baseOID}.$idx.0]} )\n"
+                ;;
+            *)
+                details+="${keyname[$idx]} is ${snmpData[${baseOID}.$idx.0]}\n"
+                ;;
+        esac
+    done
+    outmsg="HA Status (informative)"
+
+}
+
+function get_snmp {
+    #
+    # Compose snmp command
+    #
+    if [ "$nobulk" ]; then walk=snmpwalk;  else walk=snmpbulkwalk; fi
+    if [ -n "$authuser" ]; then snmpv=3; else snmpv=2c; fi
+
+    snmpcmd="$walk -Onq -v $snmpv -t $tout -r 3 \
+        $community $authuser $privproto $privpass $seclevel $authproto $authpass \
+        $hostname  $baseOID"
+
+    dbg_msg "debug snmpcmd: $snmpcmd"
+
+
+    # First of all, get the SNMP-Data
+    snmpResponse=$($snmpcmd 2>&1)
+    snmpexit=$?
+
+    dbg_msg "debugsnmpresponse: $snmpResponse"
+
+    if [ $snmpexit -ne 0 ] ; then
+        echo "(UNKNOWN): Problem fetching SNMP data."
+        echo 
+        echo "SNMP Output was: $snmpResponse"
+        exit 3
+    fi
+
+    while read oid value
+    do 
+        snmpData[$oid]="$value"
+    done <<< "$snmpResponse"
+}
+
+function process_snmp_index {
+    #### building indexes
+    #
+
+    # build element index
+    for key in ${!snmpData[@]} ; do
+        if [[ $key == "$baseOID.${id[index]}"* ]] ; then
+        elementIndex+=( ${snmpData[$key]} )
+        fi
+    done
+
+    # build name map
+    for element in  ${elementIndex[@]}
+    do
+        nameMap[${snmpData[${baseOID}.${id[name]}.$element]}]=${snmpData[${baseOID}.${id[index]}.$element]}
+    done
+    #
+    #
+    #### / building indexes
+}
+
+function process_snmp_noindex {
+    #### building indexes
+    #
+
+    # build element list
+    local element_counter=0
+    for element in ${snmpData[@]} ; do
+            elementList[$element_counter]=$element
+            : $(( element_counter++ ))
+    done
+}
+
+function process_snmp_namedindex {
+    #### building indexes
+    #
+
+    #local index_key
+    # build element index. Last OID-Tree-Level is the index
+    for key in ${!snmpData[@]} ; do
+        if [[ $key == "$baseOID.${id[name]}".* ]] ; then
+        key=${key/.*\./}
+        elementList+=( $key )
+        fi
+    done
+
+    # build name map
+    for element in  ${elementList[@]}
+    do
+        nameMap[$element]=${snmpData[${baseOID}.${id[name]}.$element]}
+    done
+
+    #
+    #
+    #### / building indexes
+}
+
+function cpu_check {
+    local cpu_percent
+    local cpu_sum=0
+    local cpu_avg
+    local cpu_count=${#elementList[@]}
+    local cpu_warn=${warn:-0}
+    local cpu_crit=${crit:-0}
+
+    if [ $cpu_count -gt 1 ] ; then
+        # sum up cpu percents
+        for cpu_item in ${elementList[@]} ; do
+            cpu_sum=$(( cpu_sum + cpu_item ))
+        done
+        cpu_avg=$(( cpu_sum / cpu_count ))
+    else
+        cpu_avg=${elementList[0]}
+    fi
+
+    glob_rcode=$( set_globalstate 0 )
+    # text output
+    outmsg+="Average CPU utiliziation ${cpu_avg}%"
+    perfdata+="avg_cpu=${cpu_avg}%;$cpu_warn"
+
+    if [ $cpu_count -gt 1 ] ; then
+        for cpu_index in ${!elementList[@]} ; do
+            perfdata+=" cpu_${cpu_index}=${elementList[$cpu_index]}%;$cpu_warn;$cpu_crit"
+        done
+    fi
+}
+
 #
 # MAIN
 #
@@ -427,25 +416,36 @@ case $mode in
         cpu_check
     ;;
 
-        license)
+    license)
         baseOID='.1.3.6.1.4.1.2604.5.1.5'
         get_snmp
         license_check
     ;;
 
-    #volume)
-    #    baseOID='.1.3.6.1.4.1.55062.1.10.9.1'
-    #    id[index]=1
-    #    id[name]=8
-    #    id[size]=3
-    #    id[free]=4
-    #    id[status]=5
-    #    get_snmp_and_process 
-    #    storage_byfilter $filter
-    #;;
+    tunnel)
+        baseOID='.1.3.6.1.4.1.2604.5.1.6.1.1.1.1'
+        id[conid]=1
+        id[name]=2
+        id[desc]=3
+        id[policy]=4
+        id[mode]=5
+        id[type]=6
+        id[port]=7
+        id[active]=8
+        get_snmp
+        process_snmp_namedindex
+        check_vpntunnel $filter
+    ;;
+
+    ha)
+        baseOID='.1.3.6.1.4.1.2604.5.1.4'
+        get_snmp
+        check_ha
+    ;;
 
     *)
-        echo "(UNKNOWN): mode '-m $mode' not known" ; exit 3 ;;
+        echo "(UNKNOWN): mode '-m $mode' not known" ; exit 3
+    ;;
 esac
 
 
@@ -460,4 +460,5 @@ echo
 exit $glob_rcode
 
 
-#vim: set ts=4 expandtab sw=4
+# vim: ts=4:expandtab:sw=4:sts=4:ai:smartindent:filetype=bash
+
