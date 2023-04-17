@@ -4,6 +4,9 @@
 #
 # Author: msander
 #
+# Version: 0.5  2023-04-17
+#   improved ha-check
+#
 # Version: 0.4  2023-04-17
 #   removed library functions and new features
 #
@@ -39,7 +42,7 @@ glob_rcode=0
 #
 
 OPTERR=1
-while getopts "H:C:u:x:X:a:A:l:w:c:m:f:F:t:Bhd" OPTION ; do
+while getopts "H:C:u:x:X:a:A:l:w:c:m:f:F:t:Bhd-:" OPTION ; do
     case "${OPTION}" in
         H) hostname=${OPTARG}       ;;
         C) community="-c ${OPTARG}" ;;
@@ -58,6 +61,16 @@ while getopts "H:C:u:x:X:a:A:l:w:c:m:f:F:t:Bhd" OPTION ; do
         B) nobulk=1                 ;;
         h) helpme=1                 ;;
         d) debug=1                  ;;
+        -)
+            OPTION=${OPTARG/=*/}
+            OPTARG=${OPTARG/*=/}
+            case ${OPTION} in
+                ha-disabled-rc) ha_disabled_rc=$OPTARG;;
+                ha-localstate-ok)    ha_local_status_ok=$OPTARG;;
+                ha-peerstate-ok)     ha_peer_status_ok=$OPTARG;;
+                *) echo "unknown option $OPTION"; exit 3;;
+            esac
+
     esac
 done
 
@@ -71,7 +84,6 @@ libdir="${callpath}/../lib"
 source $libdir/generic_plugin.shlib
 source $libdir/generic_snmp.shlib
 source $libdir/convert_and_calc.shlib
-
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Local functions
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -249,14 +261,35 @@ function check_ha() {
                 HAConfigMode LoadBalancing HAPort HACurrentIP HAPeerIP )
     
     local idx
+    local ha_local_status
+    local ha_peer_status
     for idx in ${!keyname[@]} ; do
         case $idx in
             [023])  continue;;
             1)
                 details+="${keyname[$idx]} is $( ha_status ${snmpData[${baseOID}.$idx.0]} )\n"
+                if [ "${snmpData[${baseOID}.$idx.0]}" -eq 0 ] ; then
+                    glob_rcode=$( set_globalstate $ha_disabled_rc )
+                    break
+                fi
                 ;;
-            [45])
-                details+="${keyname[$idx]} is $( ha_state ${snmpData[${baseOID}.$idx.0]} )\n"
+            4)
+                ha_local_status=$( ha_state ${snmpData[${baseOID}.$idx.0]} )
+                if [ $ha_local_status != $ha_local_status_ok ] ; then
+                    glob_rcode=$(set_globalstate 1)
+                    details+="(WARN): ${keyname[$idx]} is $ha_local_status, expected $ha_local_status_ok\n"
+                else
+                    details+="${keyname[$idx]} is $ha_local_status\n"
+                fi
+                ;;
+            5)
+                ha_peer_status=$( ha_state ${snmpData[${baseOID}.$idx.0]} )
+                if [ $ha_peer_status != $ha_peer_status_ok ] ; then 
+                    glob_rcode=$(set_globalstate 1)
+                    details+="${keyname[$idx]} is $ha_peer_status, expected $ha_peer_status_ok\n"
+                else
+                    details+="${keyname[$idx]} is $ha_peer_status\n"
+                fi
                 ;;
             *)
                 details+="${keyname[$idx]} is ${snmpData[${baseOID}.$idx.0]}\n"
@@ -397,6 +430,9 @@ function cpu_check {
 mode=${mode:=cpu}
 filter=${filter:=.}
 tout=${tout:=20}
+ha_disabled_rc=${ha_disabled_rc:=0}
+ha_local_status_ok=${ha_local_status_ok:=primary}
+ha_peer_status_ok=${ha_peer_status_ok:=auxiliary}
 
 check_arguments
 # 
