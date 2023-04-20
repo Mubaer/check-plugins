@@ -4,6 +4,9 @@
 #
 # Author: msander
 #
+# Version: 0.6  2023-04-20
+#   prettyfied ha-check
+#
 # Version: 0.5  2023-04-17
 #   improved ha-check
 #
@@ -256,6 +259,17 @@ function ha_status() {
     fi
 }
 
+function lb_status() {
+    local numState=$1
+    local stateName=( n/a off on )
+    if [ "${stateName[$numState]}" == '' ] ; then
+        dbg_msg "no name defined for status '$numState'"
+        exit 10
+    else
+        echo ${stateName[$numState]}
+    fi
+}
+
 function check_ha() {
     local keyname=( dummy HAStatus CurrentAppKey PeerAppKey CurrentHAState PeerHAState \
                 HAConfigMode LoadBalancing HAPort HACurrentIP HAPeerIP )
@@ -263,11 +277,27 @@ function check_ha() {
     local idx
     local ha_local_status
     local ha_peer_status
+    local maxKeyLength=0
+    local loop_line
+
+    # find out longest keyname for pretty output
+    for val in ${keyname[@]} ; do
+        if [ ${#val} -gt $maxKeyLength ] ; then
+            maxKeyLength=${#val}
+        fi
+    done
+
+    outmsg="HA Status:"
+    
     for idx in ${!keyname[@]} ; do
         case $idx in
             [023])  continue;;
             1)
-                details+="${keyname[$idx]} is $( ha_status ${snmpData[${baseOID}.$idx.0]} )\n"
+                loop_line=$( printf "%-${maxKeyLength}s is %s" \
+                    "${keyname[$idx]}"  "$( ha_status ${snmpData[${baseOID}.$idx.0]} )" )
+                details+="$loop_line\n"
+                outmsg+=" $( ha_status ${snmpData[${baseOID}.$idx.0]} )"
+
                 if [ "${snmpData[${baseOID}.$idx.0]}" -eq 0 ] ; then
                     glob_rcode=$( set_globalstate $ha_disabled_rc )
                     break
@@ -275,28 +305,46 @@ function check_ha() {
                 ;;
             4)
                 ha_local_status=$( ha_state ${snmpData[${baseOID}.$idx.0]} )
+
                 if [ $ha_local_status != $ha_local_status_ok ] ; then
                     glob_rcode=$(set_globalstate 1)
-                    details+="(WARN): ${keyname[$idx]} is $ha_local_status, expected $ha_local_status_ok\n"
+                    outmsg="HA Status not as expected"
+
+                    loop_line=$( printf "%-${maxKeyLength}s is %s, expected %s\t<-- [WARNING] !!" \
+                        "${keyname[$idx]}" "$ha_local_status" "$ha_local_status_ok" )
+                    details+="$loop_line\n"
                 else
-                    details+="${keyname[$idx]} is $ha_local_status\n"
+                    loop_line=$( printf "%-${maxKeyLength}s is %s" "${keyname[$idx]}" "$ha_local_status" )
+                    details+="$loop_line\n"
                 fi
                 ;;
             5)
                 ha_peer_status=$( ha_state ${snmpData[${baseOID}.$idx.0]} )
                 if [ $ha_peer_status != $ha_peer_status_ok ] ; then 
                     glob_rcode=$(set_globalstate 1)
-                    details+="${keyname[$idx]} is $ha_peer_status, expected $ha_peer_status_ok\n"
+                    outmsg="HA Status not as expected"
+
+                    loop_line=$( printf "%-${maxKeyLength}s is %s, expected %s\t<-- [WARNING] !!"  \
+                        "${keyname[$idx]}" "$ha_peer_status" "$ha_peer_status_ok" )
+                    details+="$loop_line\n"
                 else
-                    details+="${keyname[$idx]} is $ha_peer_status\n"
+                    loop_line=$( printf "%-${maxKeyLength}s is %s\n" \
+                        "${keyname[$idx]}" "$ha_peer_status" )
+                    details+="$loop_line\n"
                 fi
                 ;;
+            7)
+                loop_line=$( printf "%-${maxKeyLength}s is %s" \
+                    "${keyname[$idx]}" "$( lb_status ${snmpData[${baseOID}.$idx.0]} )" )
+                details+="$loop_line\n"
+                ;;
             *)
-                details+="${keyname[$idx]} is ${snmpData[${baseOID}.$idx.0]}\n"
+                loop_line=$( printf "%-${maxKeyLength}s is %s" \
+                    "${keyname[$idx]}" "${snmpData[${baseOID}.$idx.0]}" )
+                details+="$loop_line\n"
                 ;;
         esac
     done
-    outmsg="HA Status (informative)"
 
 }
 
