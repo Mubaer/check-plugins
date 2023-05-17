@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+#
+# Check Fortigate Firewall via API
+#
+# Version 0.1
+#
+import os, sys
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+import argparse
+import pprint
+from lib.jsonapi import *
+from lib.generic_plugin import *
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # 
+# MAIN
+# # # # # # # # # # # # # # # # # # # # # # # # # 
+
+# parse command line parameters
+
+cli = argparse.ArgumentParser \
+    (description='Check Sophos Cloud Services for Endpoint-Status or Alerts')
+
+cli.add_argument('-H', help='Hostname or IP address')
+cli.add_argument('--token', help='api access token')
+cli.add_argument('--mode', help='select check mode', choices=['version', 'health'])
+#cli.add_argument('--fields', help='List of fields to output, seperated by "+"')
+#cli.add_argument('--filter', action='append', nargs=2, \
+    #help="--filter 'key' 'value' [--filter 'key<n>' 'value<n>']")
+args = cli.parse_args()
+#pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
+
+# init vars
+rcode=0
+head=''
+detail=''
+mode=args.mode
+
+
+def sysinfo( host, token ):
+    url="https://{}/api/v2/monitor/system/status/?access_token={}".format( host, token )
+    jdata=request_json( url )
+
+    output="Hostname: {}, Model: {}, Version {}, Serial: {}".format( \
+        jdata.get('results').get('hostname'), \
+        jdata.get('results').get('model'), jdata.get('version'), \
+        jdata.get('serial') )
+    return output
+
+if mode=='version':
+    head=sysinfo(args.H, args.token)
+else:
+    rcode=3
+    head='Option "--mode" required'
+
+
+#Finally, print check output and exit with rcode
+print("{} {}".format( rcstring(rcode), head ))
+sys.exit(rcode)
+
+# vim: ts=4:expandtab:sw=4:sts=4:ai:smartindent:filetype=python
+
