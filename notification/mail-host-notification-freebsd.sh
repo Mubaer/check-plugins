@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
 # Icinga 2 | (c) 2012 Icinga GmbH | GPLv2+
 # Except of function urlencode which is Copyright (C) by Brian White (brian@aljex.com) used under MIT license
-# Modified and enhanced by m.sander@mr-daten.de 2022
+# Modified and enhanced by m.sander@mr-daten.de 2022-2023
 
 PROG="`basename $0`"
 ICINGA2HOST="`hostname`"
+
+#
+# Mail Binary Selection
+#
 # fixed mail binary b/c we use 'mailutils'-package
 MAILBIN="/usr/local/bin/mail"
-
-if [ -z "`which $MAILBIN`" ] ; then
+FLAG_MUTT=0
+# First, try mutt. Else, try preconfigured MAILBIN
+if [ -n "`which mutt`" ] ; then
+  MAILBIN=`which mutt`
+  FLAG_MUTT=1
+elif [ -z "`which $MAILBIN`" ] ; then
   echo "$MAILBIN not found in \$PATH. Consider installing it."
   exit 1
 fi
@@ -31,6 +39,7 @@ Optional parameters:
   -6 HOSTADDRESS6 (\$address6\$)
   -b NOTIFICATIONAUTHORNAME (\$notification.author\$)
   -c NOTIFICATIONCOMMENT (\$notification.comment\$)
+  -k CUSTOMER_NAME (\$host.vars.customer_name\$)
   -i ICINGAWEB2URL (\$notification_icingaweb2url\$, Default: unset)
   -f MAILFROM (\$notification_mailfrom\$, requires GNU mailutils (Debian/Ubuntu) or mailx (RHEL/SUSE))
   -v (\$notification_sendtosyslog\$, Default: false)
@@ -86,8 +95,24 @@ getemoticon() {
     echo "$emo"
 }
 
+
+center_string() {
+    local center_pos=$1
+    local string=$2
+    local c=0 buffer=''
+
+    local length=${#string}
+    local offset=$(( center_pos  - length / 2 ))
+    while [ $c -lt $offset ] ; do
+        buffer+=' '
+        : $(( c++ ))
+    done
+
+    echo "${buffer}$string"
+}
+
 ## Main
-while getopts 4:6::b:c:d:f:hi:l:n:o:r:s:t:v: opt
+while getopts 4:6::b:c:d:f:hi:k:l:n:o:r:s:t:v: opt
 do
   case "$opt" in
     4) HOSTADDRESS=$OPTARG ;;
@@ -98,6 +123,7 @@ do
     f) MAILFROM=$OPTARG ;;
     h) Help ;;
     i) ICINGAWEB2URL=$OPTARG ;;
+    k) CUSTOMER_NAME=$OPTARG ;;
     l) HOSTNAME=$OPTARG ;; # required
     n) HOSTDISPLAYNAME=$OPTARG ;; # required
     o) HOSTOUTPUT=$OPTARG ;; # required
@@ -128,24 +154,46 @@ done
 ## Build the message's subject
 SUBJECT="[$NOTIFICATIONTYPE | $HOSTSTATE] Host '$HOSTDISPLAYNAME'"
 
+## Append Customer Name when provided
+if [ -n "$CUSTOMER_NAME" ] ; then
+    SUBJECT+=" ($CUSTOMER_NAME)"
+fi
+
 ## Pipe subject through quoted-printable encoder
 # commented out on 2022-08-02, does not work reliable
 #SUBJECT=$( echo "$SUBJECT" | quoted_printable -e )
 #SUBJECT="=?UTF-8?Q?${SUBJECT}?="
 
+## Define things for formating page
+## hline is the reference for page width and centered text
+hline='-------------------------------------------------------------------'
+## Dashed Version
+dline='- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -'
+hline_center=$(( ${#hline} / 2 ))
+
 ## Set emoticon for notificationtype
 emoti=`getemoticon $NOTIFICATIONTYPE`
 
+# Set Customer info 
+line_customer=''
+if [ -n "$CUSTOMER_NAME" ] ;then
+    line_customer=$( center_string $hline_center "KUNDE: '$CUSTOMER_NAME'" )
+    line_customer+="\n$dline\n"
+fi
+
+header_text=$( center_string $hline_center 'MR Datentechnik Monitoring System' )
+typeline=$( center_string $hline_center "-=   $emoti $NOTIFICATIONTYPE $emoti   =-" )
+
 ## Build the notification message
 NOTIFICATION_MESSAGE=`cat << EOF
---------------------------------------------------------------------
+$hline
 
-                MR Datentechnik Monitoring System
+$header_text
 
---------------------------------------------------------------------
+$hline
+$line_customer
 
-                -=   $emoti $NOTIFICATIONTYPE $emoti   =-
-
+$typeline
 
 $HOSTDISPLAYNAME is $HOSTSTATE!
 
@@ -206,14 +254,19 @@ fi
 ## If an explicit sender was specified, try to set it.
 if [ -n "$MAILFROM" ] ; then
 
-  ## Modify this for your own needs!
-
-  ## Debian/Ubuntu use mailutils which requires `-a` to append the header
-  if [ -f /etc/debian_version -o -f /etc/pkg/FreeBSD.conf ]; then
-    /usr/bin/printf "%b" "$NOTIFICATION_MESSAGE" | $MAILBIN -a "From: $MAILFROM" -s "$SUBJECT" $USEREMAIL
-  ## Other distributions (RHEL/SUSE/etc.) prefer mailx which sets a sender address with `-r`
+  if [ $FLAG_MUTT -eq 0 ] ; then
+      ## Debian/Ubuntu use mailutils which requires `-a` to append the header
+      if [ -f /etc/debian_version -o -f /etc/pkg/FreeBSD.conf ]; then
+        /usr/bin/printf "%b" "$NOTIFICATION_MESSAGE" | $MAILBIN -a "From: $MAILFROM" -s "$SUBJECT" $USEREMAIL
+      ## Other distributions (RHEL/SUSE/etc.) prefer mailx which sets a sender address with `-r`
+      else
+        /usr/bin/printf "%b" "$NOTIFICATION_MESSAGE" | $MAILBIN -r "$MAILFROM" -s "$SUBJECT" $USEREMAIL
+      fi
   else
-    /usr/bin/printf "%b" "$NOTIFICATION_MESSAGE" | $MAILBIN -r "$MAILFROM" -s "$SUBJECT" $USEREMAIL
+      # This should work with mutt
+      export EMAIL="$MAILFROM"
+      /usr/bin/printf "%b" "$NOTIFICATION_MESSAGE" \
+      | $MAILBIN -s "$SUBJECT" $USEREMAIL
   fi
 
 else
