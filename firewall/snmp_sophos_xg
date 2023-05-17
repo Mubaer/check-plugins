@@ -25,7 +25,7 @@
 #    - Added a 'dbg_msg' function for debugging output to stderr
 #    - Fixed indentation
 #
-## Version: 0.2  2023-03-27
+# Version: 0.2  2023-03-27
 #   fixed perfdata output
 #
 # Version: 0.1  2023-03-27
