@@ -2,14 +2,19 @@
 #
 # Check Fortigate Firewall via API
 #
+# Version 0.2
+#  added cpu, mem, licence checks (without thresholds)
+#
 # Version 0.1
 #
 import os, sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 import argparse
 import pprint
+from datetime import *
 from lib.jsonapi import *
 from lib.generic_plugin import *
+from datetime import datetime
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # 
@@ -23,10 +28,10 @@ cli = argparse.ArgumentParser \
 
 cli.add_argument('-H', help='Hostname or IP address')
 cli.add_argument('--token', help='api access token')
-cli.add_argument('--mode', help='select check mode', choices=['version', 'health'])
-#cli.add_argument('--fields', help='List of fields to output, seperated by "+"')
-#cli.add_argument('--filter', action='append', nargs=2, \
-    #help="--filter 'key' 'value' [--filter 'key<n>' 'value<n>']")
+cli.add_argument('--mode', help='select check mode', \
+        choices=['version', 'health', 'license', 'cpu', 'mem'])
+cli.add_argument('--warn', help='warning theshold', type=int)
+cli.add_argument('--crit', help='critical theshold', type=int)
 args = cli.parse_args()
 #pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
 
@@ -35,6 +40,8 @@ rcode=0
 head=''
 detail=''
 mode=args.mode
+warn=args.warn
+crit=args.crit
 
 
 def sysinfo( host, token ):
@@ -47,8 +54,63 @@ def sysinfo( host, token ):
         jdata.get('serial') )
     return output
 
+def resource( host, token, res, warn, crit):
+    interval='10'
+    intname="{}-min".format(interval)
+    url="https://{}/api/v2/monitor/system/resource/usage?access_token={}&interval={}-min&resource={}".format(\
+            host, token, interval, res )
+
+    jdata=request_json( url )
+    output=''
+    ind=0
+    for resobj in jdata['results'][res]:
+        avg = str( resobj['historical'][intname]['average'] )
+        output+="{}[{}]: {}% ".format(res, ind, avg)
+        ind += 1
+
+    output+="  ({} minute average)".format(interval)
+    return output
+
+def license( host, token, warn, crit):
+    url="https://{}/api/v2/monitor/license/status/?access_token={}".format( host, token )
+    jdata=request_json( url )
+    output='Licence Check\n\n'
+    #pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
+    #pp.pprint(jdata.get('results'))
+
+    # get longest key name
+    longest = len( max( jdata.get('results').keys(), key=len) )
+
+    for lic in sorted( jdata.get('results').keys() ):
+        l_status  = jdata.get('results').get(lic).get('status')
+        if l_status == 'no_license' or l_status == None: continue
+
+        l_expires = jdata.get('results').get(lic).get('expires')
+
+        now = datetime.now(timezone.utc)
+        if l_expires != None:
+            exp_date = datetime.fromtimestamp( l_expires, timezone.utc )
+            exp_period = ( exp_date - now ).days
+            output+="{:<{len}}| {:^17}| expires in {} days\n".format( \
+                    lic+':', l_status, exp_period, len=longest )
+        else:
+            output+="{:<{len}}| {:^17}| no expiration date\n".format( \
+                    lic, l_status, len=longest )
+
+        #if warn != None and exp_period < warn:
+        #    print ("hilfe!")
+
+    return output
+
+
 if mode=='version':
     head=sysinfo(args.H, args.token)
+elif mode=='cpu':
+    head=resource(args.H, args.token, 'cpu', warn, crit)
+elif mode=='mem':
+    head=resource(args.H, args.token, 'mem', warn, crit)
+elif mode=='license':
+    head=license(args.H, args.token, warn, crit )
 else:
     rcode=3
     head='Option "--mode" required'
