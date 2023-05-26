@@ -37,7 +37,7 @@ args = cli.parse_args()
 
 # init vars
 rcode=0
-head=''
+out_text=''
 detail=''
 mode=args.mode
 warn=args.warn
@@ -62,28 +62,48 @@ def resource( host, token, res, warn, crit):
 
     jdata=request_json( url )
     output=''
+    perfdata=''
     ind=0
+    rcode = 0
     for resobj in jdata['results'][res]:
         avg = str( resobj['historical'][intname]['average'] )
+        # Convert to int
+        avg_int = int(avg)
+
+        # Check threshold and update global rcode
+        loop_rc = check_threshold( avg_int, warn, crit )
+        rcode = update_rc( loop_rc, rcode )
+
         output+="{}[{}]: {}% ".format(res, ind, avg)
+        perfdata+="{}[{}]={}%;{};{};0;100 ".format(res, ind, avg, warn, crit)
         ind += 1
 
     output+="  ({} minute average)".format(interval)
-    return output
+    return (output, rcode, perfdata)
 
 def license( host, token, warn, crit):
     url="https://{}/api/v2/monitor/license/status/?access_token={}".format( host, token )
     jdata=request_json( url )
-    output='Licence Check\n\n'
     #pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
     #pp.pprint(jdata.get('results'))
 
     # get longest key name
     longest = len( max( jdata.get('results').keys(), key=len) )
 
+    rcode=0
+    output=''
+    details=''
+    status_count={}
     for lic in sorted( jdata.get('results').keys() ):
         l_status  = jdata.get('results').get(lic).get('status')
+
+        # --> do not handle this license status
         if l_status == 'no_license' or l_status == None: continue
+
+        if l_status not in status_count:
+            status_count[l_status]=1
+        else:
+            status_count[l_status]+=1
 
         l_expires = jdata.get('results').get(lic).get('expires')
 
@@ -91,33 +111,45 @@ def license( host, token, warn, crit):
         if l_expires != None:
             exp_date = datetime.fromtimestamp( l_expires, timezone.utc )
             exp_period = ( exp_date - now ).days
-            output+="{:<{len}}| {:^17}| expires in {} days\n".format( \
+            details += "{:<{len}}| {:^17}| expires in {} days\n".format( \
                     lic+':', l_status, exp_period, len=longest )
+            loop_rc = check_threshold( exp_period, warn, crit, 'lt' )
+            rcode = update_rc( loop_rc, rcode )
+            if loop_rc > 0:
+                if 'expiring_soon' not in status_count:
+                    status_count['expiring_soon']=1
+                else:
+                    status_count['expiring_soon']+=1
         else:
-            output+="{:<{len}}| {:^17}| no expiration date\n".format( \
+            details += "{:<{len}}| {:^17}| no expiration date\n".format( \
                     lic, l_status, len=longest )
 
-        #if warn != None and exp_period < warn:
-        #    print ("hilfe!")
+    output  = 'Licence Check: '
+    for stat in status_count:
+        output += "{} {}, ".format(status_count[stat], stat)
+    output += "\n\n" + details
+    return(output, rcode)
 
-    return output
-
-
+perfdata=''
 if mode=='version':
-    head=sysinfo(args.H, args.token)
+    out_text=sysinfo(args.H, args.token)
 elif mode=='cpu':
-    head=resource(args.H, args.token, 'cpu', warn, crit)
+    (out_text, rcode, perfdata)=resource(args.H, args.token, 'cpu', warn, crit)
 elif mode=='mem':
-    head=resource(args.H, args.token, 'mem', warn, crit)
+    (out_text, rcode, perfdata)=resource(args.H, args.token, 'mem', warn, crit)
 elif mode=='license':
-    head=license(args.H, args.token, warn, crit )
+    (out_text,rcode)=license(args.H, args.token, warn, crit )
 else:
     rcode=3
-    head='Option "--mode" required'
+    out_text='Option "--mode" required'
 
 
 #Finally, print check output and exit with rcode
-print("{} {}".format( rcstring(rcode), head ))
+if not perfdata:
+    print("{} {}".format( rcstring(rcode), out_text ))
+else:
+    print("{} {}|{}".format( rcstring(rcode), out_text, perfdata ))
+
 sys.exit(rcode)
 
 # vim: ts=4:expandtab:sw=4:sts=4:ai:smartindent:filetype=python
