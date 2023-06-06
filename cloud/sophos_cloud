@@ -25,6 +25,7 @@ import logging
 import argparse
 import sys
 import pprint
+from time import sleep
 
 
 #
@@ -51,15 +52,17 @@ def get_token(user, pwd):
     url = "{}/api/v2/oauth2/token".format( url_id )
     header = { 'Content-Type': 'application/x-www-form-urlencoded' }
     data="grant_type=client_credentials&client_id={}&client_secret={}&scope=token".format( user, pwd )
+    details=''
     resp = requests.post( url, data=data, headers=header )
 
     if resp:
         access_token = resp.json().get( 'access_token' )
     else:
-        logging.error("something went wrong\n\nRESP_HEADER\n{}\n\nRESP_TEXT\n{}".format( \
-                resp.headers, resp.text ))
+        details = "something went wrong\n\nRESP_HEADER\n{}\n\nRESP_TEXT\n{}".format( \
+                resp.headers, resp.text )
+        access_token = 'failed'
 
-    return access_token
+    return (access_token, details)
 
 def whoami( access_token ):
     url = "{}/whoami/v1".format( url_api )
@@ -332,8 +335,20 @@ url_id  = 'https://id.sophos.com'
 url_api = 'https://api.central.sophos.com'
 rcode = 0
 
-# Login and fetch data
-access_token = get_token( args.client_id, args.client_secret )
+# Login, try multiple times
+access_token = 'failed'
+retries = 3
+while access_token == 'failed' and retries > 0:
+    (access_token, details) = get_token( args.client_id, args.client_secret )
+    retries -= 1
+    if access_token == 'failed':
+        sleep(5)
+
+if access_token == 'failed':
+    print("(UNKNOWN): Problem during authentication\n\n{}".format(details))
+    sys.exit(3)
+
+# fetch data
 (myid, main_api) = whoami( access_token )
 
 if not args.tenant_id and args.account_type == 'partner':
