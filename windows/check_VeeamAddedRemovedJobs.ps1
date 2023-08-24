@@ -1,7 +1,10 @@
 ###  Veeam added/removed Job Checker  ###
 ###   (c) MR-Daten - Charly Kupke     ###
-###           Version 1.0             ###
+###           Version 1.1             ###
 ### ### ### ### #### #### ### ### ### ###
+
+#$ErrorActionPreference = 'SilentlyContinue'
+#$WarningPreference = 'SilentlyContinue'
 
 try {
     $veeamjobs = Get-VBRJob | Sort LogNameMainPart
@@ -24,9 +27,11 @@ Foreach ($veeamjob in $veeamjobs) {
     $veeam_jobname = $veeamjob.LogNameMainPart
     $currentJobs += $veeam_jobname
 }
-
-$previousJobs = Get-Content -Path $filePath
-
+try {
+    $previousJobs = Get-Content -Path $filePath -ErrorAction Stop
+} catch {
+    $previousJobs = "First Runtime of Job","Initialize - ignore Warning"
+}
 $differences = Compare-Object $currentJobs $previousJobs
 $currentJobs | Out-File -FilePath $filePath
 
@@ -39,10 +44,10 @@ else {
     $oldJobsContent = ""
 
     Foreach ($difference in $differences) {
-        If ($difference.SideIndicator -eq '=>') {
+        If ($difference.SideIndicator -eq '<=' -And $difference.InputObject -ne '') {
             $newJobsContent += $difference.InputObject + "`n"
         }
-        If ($difference.SideIndicator -eq '<=') {
+        If ($difference.SideIndicator -eq '=>' -And $difference.InputObject -ne '') {
             $oldJobsContent += $difference.InputObject + "`n"
         }
     }
@@ -51,7 +56,7 @@ else {
         $OutputContent += $newJobsContent + "`n"
     }
     if ($oldJobsContent -ne '') {
-        $OutputContent += '(WARNING) Jobs seit lettem Check entfernt:' + "`n"
+        $OutputContent += '(WARNING) Jobs seit letztem Check entfernt:' + "`n"
         $OutputContent += $oldJobsContent
     }
     $ExitCode = 1
