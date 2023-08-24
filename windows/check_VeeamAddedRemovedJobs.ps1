@@ -30,7 +30,7 @@ Foreach ($veeamjob in $veeamjobs) {
 try {
     $previousJobs = Get-Content -Path $filePath -ErrorAction Stop
 } catch {
-    $previousJobs = "First Runtime of Job","Initialize - ignore Warning"
+    $previousJobs = "(OK) [ Note: First Runtime of Job ]","(OK) [ Note: Initialize - ignore Warning ]"
 }
 $differences = Compare-Object $currentJobs $previousJobs
 $currentJobs | Out-File -FilePath $filePath
