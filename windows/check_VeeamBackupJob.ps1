@@ -96,7 +96,7 @@ Foreach ($veeamjob in $veeamjobs) {
     $veeam_state = $veeamjob.GetLastState()
     if (($exclusivejob -and $exclusivejob -contains $veeam_jobname) -or ($ignorejob -and $ignorejob -notcontains $veeam_jobname) -or (!$exclusivejob -and !$ignorejob)) {
         $OutputCount_Jobs = $OutputCount_Jobs + 1
-        if (!(($veeam_jobtype -eq 'Hyper-V Backup Copy') -or ($veeam_jobtype -eq 'VMware Backup Copy')) -and $veeam_schedule) {
+        if (!(($veeam_jobtype -eq 'Hyper-V Backup Copy') -or ($veeam_jobtype -eq 'VMware Backup Copy') -or ($veeam_jobtype -eq 'Backup Copy')) -and $veeam_schedule) {
             $veeam_jobhistory = $veeamjobshistory | ?{$_.OrigJobName -eq $veeam_jobname}
             if ($veeam_jobhistory[0].State -eq 'Stopped') {
                 $veeam_jobruntime = New-TimeSpan -Start $veeam_jobhistory[0].CreationTime -End $veeam_jobhistory[0].EndTime
