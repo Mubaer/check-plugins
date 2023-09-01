@@ -202,7 +202,7 @@ Foreach ($veeamjob in $veeamjobs) {
             $OutputCount_OK = $OutputCount_OK + 1
         }
         else {
-            if ($veeam_result -eq 'Success') {
+            if ($veeam_result -eq 'Success' -or $veeam_state -eq 'Idle') {
                 $OutputContent += "(OK) Job: $veeam_jobname; Last Result: $veeam_result; State: $veeam_state; Scheduled: $veeam_schedule; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
                 $OutputContent += "`n"
                 $OutputCount_OK = $OutputCount_OK + 1
