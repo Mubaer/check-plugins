@@ -42,7 +42,7 @@ jq_rc=$?
 if [ $jq_rc -eq 0 ] ; then
     case $network in 
         "") 
-            exit_status 3 "Empty networkID. Prabably SN '$serial' does not exist"
+            exit_status 3 "Empty networkID. Probably SN '$serial' does not exist"
             ;;
      'null')
             exit_status 3 'No networkID tag found. Wrong api-key?'
