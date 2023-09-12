@@ -56,9 +56,21 @@ response=$( curl -s $meraki_url/api/v1/networks/$network/health/alerts \
     )
 jq_rc=$?
 
+# No alerts at all? Good!
 if [ $jq_rc -eq 0 -a "$response" == '[]' ] ; then
     exit_status 0 'No alerts found'
+# Alerts, but for our device/serial?
 else
-    exit_status 1 'Alerts found' "$response"
+    # Select only elements with our device in devices array
+    device_filter="select(.[].scope.devices[].serial == \"$serial\")"
+    device_errors=$( echo "$response" | jq "$device_filter" )
+    if [ -n "$device_errors" ] ;then
+        alert_formater='.[] | "Category: \"" + .category + "\" | Type: \"" + .type + "\" | Severity: \"" + .severity + "\""'
+        formated=$( echo "$device_errors" | jq -r  "$alert_formater" )
+        exit_status 1 'Alerts found' "$formated"
+
+    else
+        exit_status 0 'No alerts found'
+    fi
 fi
 
