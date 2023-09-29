@@ -22,6 +22,17 @@ fi
 
 : ${meraki_url=https://n121.meraki.com/}
 
+# Build jq type filter for 'select'
+filter_types=("DFS event pattern")
+type_filter=''
+for ftype in "${filter_types[@]}"; do
+    if [ -z "$type_filter" ] ; then
+        type_filter+=".type != \"$ftype\""
+    else
+        type_filter+=" and .type != \"$ftype\""
+    fi
+done
+
 #
 # Get Network-ID of switch
 #
@@ -65,9 +76,17 @@ else
     device_filter="select(.[].scope.devices[].serial == \"$serial\")"
     device_errors=$( echo "$response" | jq "$device_filter" )
     if [ -n "$device_errors" ] ;then
-        alert_formater='.[] | "Category: \"" + .category + "\" | Type: \"" + .type + "\" | Severity: \"" + .severity + "\""'
-        formated=$( echo "$device_errors" | jq -r  "$alert_formater" )
-        exit_status 1 'Alerts found' "$formated"
+        # Build final filter
+        alert_filter=".[] | select ($type_filter)"
+        alert_formater='"Category: \"" + .category + "\" | Type: \"" + .type + "\" | Severity: \"" + .severity + "\""'
+        complete_filter="$alert_filter | $alert_formater"
+
+        formated=$( echo "$device_errors" | jq -r  "$complete_filter" )
+        if [ -n "$formated" ] ; then
+            exit_status 1 'Alerts found' "$formated"
+        else
+            exit_status 0 'No alerts found'
+        fi
 
     else
         exit_status 0 'No alerts found'
