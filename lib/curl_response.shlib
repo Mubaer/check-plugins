@@ -1,0 +1,13 @@
+check_curlresponse () {
+    case $curl_rc in
+        0) ;;
+        6)
+            exit_status 3 "Host not found '$meraki_url'" ;;
+        7)
+            exit_status 3 "Could connect to '$meraki_url'" ;;
+        28)
+            exit_status 3 "Timeout while connecting to '$meraki_url'" ;;
+        *)
+            exit_status 3 "unhandled curl error" ;;
+    esac
+}
