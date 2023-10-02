@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+callpath=`dirname $0`
+LIBPATH=$callpath/../lib
+. $LIBPATH/bashPluginFunctions.sh
+. $LIBPATH/curl_response.shlib
+
+OPTERR=1
+while getopts "k:m:" OPTION ; do
+    case "$OPTION" in
+    k)  apikey="$OPTARG"     ;;
+    m)  meraki_url="$OPTARG" ;;
+    ?)   exit 3 ;;
+    esac
+done
+
+if [ -z "$apikey" ] ; then
+    RC=3
+    msg="$0: parameter missing"
+    echo -e "${status[$RC]}: $msg"
+    exit $RC
+fi
+
+: ${meraki_url=https://n121.meraki.com/}
+
+#
+# Get Organizations
+#
+curl_response=$( curl -s $meraki_url/api/v1/organizations \
+    -w ';%{response_code}' \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json' \
+    -H "X-Cisco-Meraki-API-Key: $apikey" )
+
+curl_rc=$?
+# react to curl response codes
+check_curlresponse "$curl_rc"
+
+error=$( echo "$curl_response" | gsed -E 's/.*;([0-9]{3})$/\1/' )
+response=$( echo "$curl_response" | gsed -E 's/;([0-9]{3})$//' )
+
+orgs=$( echo "$response" | jq -r '.[] | .name' 2> /dev/null )
+jq_rc=$?
+
+if [ $jq_rc -eq 0 ] ; then
+    case $orgs in 
+        "") 
+            exit_status 3 "Empty networkID. Probably SN '$serial' does not exist"
+            ;;
+     'null')
+            exit_status 3 'No networkID tag found. Wrong api-key?'
+            ;;
+        *)
+            exit_status 0 "Access OK to following organisations:" "$orgs"
+            ;;
+    esac
+else
+    exit_status 3 'could not parse curl response' "$curl_response"
+fi
