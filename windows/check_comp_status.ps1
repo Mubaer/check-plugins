@@ -194,16 +194,16 @@ if($licensed -like "Licensed"){
 $licensed = $true}
     
 #Buildnumber
-$version = (Get-itemproperty -path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion" -name CurrentBuildNumber).CurrentBuildNumber
-$patchlevel = (Get-itemproperty -path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion" -name UBR).UBR
+$version     = (Get-itemproperty -path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion" -name CurrentBuildNumber).CurrentBuildNumber
+$patchlevel  = (Get-itemproperty -path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion" -name UBR).UBR
 $buildnumber = $version + "." + $patchlevel
     
 #Rebbot required?
 $trp = Test-PendingReboot
     
 #AV installed?
-$Sophos = Get-InstalledSoftware -Name "Sophos Endpoint Agent"
-$Forti = Get-InstalledSoftware -Name "FortiClient"
+$Sophos   = Get-InstalledSoftware -Name "Sophos Endpoint Agent"
+$Forti    = Get-InstalledSoftware -Name "FortiClient"
 $Defender = $(Get-MpComputerStatus).AntivirusEnabled
     
 if($Sophos -or $Forti -or ($Defender -eq "Running")){
