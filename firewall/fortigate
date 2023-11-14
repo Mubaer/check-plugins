@@ -26,10 +26,11 @@ from datetime import datetime
 cli = argparse.ArgumentParser \
     (description='Check Sophos Cloud Services for Endpoint-Status or Alerts')
 
-cli.add_argument('-H', help='Hostname or IP address')
+cli.add_argument('-H', help='Hostname or IP address', required = True)
 cli.add_argument('--token', help='api access token')
-cli.add_argument('--mode', help='select check mode', \
-        choices=['version', 'health', 'license', 'cpu', 'mem'])
+cli.add_argument('--port', help='tcp port to connect to (default 443)')
+cli.add_argument('--mode', help='select check mode', required = True,
+        choices=['version', 'health', 'license', 'cpu', 'mem'] )
 cli.add_argument('--warn', help='warning theshold', type=int)
 cli.add_argument('--crit', help='critical theshold', type=int)
 args = cli.parse_args()
@@ -42,7 +43,6 @@ detail=''
 mode=args.mode
 warn=args.warn
 crit=args.crit
-
 
 def sysinfo( host, token ):
     url="https://{}/api/v2/monitor/system/status/?access_token={}".format( host, token )
@@ -131,14 +131,20 @@ def license( host, token, warn, crit):
     return(output, rcode)
 
 perfdata=''
+
+if args.port:
+    hostname = args.H + ':' + args.port
+else:
+    hostname = args.H
+
 if mode=='version':
-    out_text=sysinfo(args.H, args.token)
+    out_text=sysinfo(hostname, args.token)
 elif mode=='cpu':
-    (out_text, rcode, perfdata)=resource(args.H, args.token, 'cpu', warn, crit)
+    (out_text, rcode, perfdata)=resource(hostname, args.token, 'cpu', warn, crit)
 elif mode=='mem':
-    (out_text, rcode, perfdata)=resource(args.H, args.token, 'mem', warn, crit)
+    (out_text, rcode, perfdata)=resource(hostname, args.token, 'mem', warn, crit)
 elif mode=='license':
-    (out_text,rcode)=license(args.H, args.token, warn, crit )
+    (out_text,rcode)=license(hostname, args.token, warn, crit )
 else:
     rcode=3
     out_text='Option "--mode" required'
