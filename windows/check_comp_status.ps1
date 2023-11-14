@@ -229,5 +229,5 @@ $result += "AntiVirus installed : " + $AVInstalled + "`r`n"
     
 Write-Host $result
 
-#$host.SetShouldExit($exitcode)
-#exit
+$host.SetShouldExit($exitcode)
+exit
