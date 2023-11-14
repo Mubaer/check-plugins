@@ -159,7 +159,8 @@ Clear-Host
     
 $CPUS = ""
 $RAM = ""
-$diskfree = ""
+$diskrel = ""
+$diskgb = ""
 $licensed = ""
 $buildnumber = ""
 $trp = ""
@@ -186,8 +187,12 @@ $RAM = [Math]::Round($memory.TotalPhysicalMemory/ 1GB)
     
 # Diskfree in %
 $disk = Get-CimInstance -ClassName Win32_LogicalDisk
-$diskfree = [Math]::Round($disk[0].Freespace / $disk[0].Size * 100)
+$diskrel = [Math]::Round($disk[0].Freespace / $disk[0].Size * 100)
     
+# Diskfree in GB
+$diskgb = [Math]::Round($disk[0].Freespace / 1GB)
+
+
 # Windows activated?
 $licensed = $(Get-ActivationStatus).Status
 if($licensed -like "Licensed"){
@@ -212,16 +217,17 @@ $AVInstalled = $True
     
 }
 $result =  "Compliance check plugin"               + "`r`n"  + "`r`n"
-$result += "CPUs (Cores)        : " + $CPUS        + "`r`n"
-$result += "RAM (GB)            : " + $RAM         + "`r`n"
-$result += "Diskfree (%)        : " + $diskfree    + "`r`n"
-$result += "Activated (OS)      : " + $Licensed    + "`r`n"
-$result += "Buildnumber (OS)    : " + $buildnumber + "`r`n"
+$result += "CPUs (Cores) : " + $CPUS        + "`r`n"
+$result += "RAM (GB) : " + $RAM         + "`r`n"
+$result += "Diskrelative (%) : " + $diskrel    + "`r`n"
+$result += "Diskfree (GB) : " + $diskgb    + "`r`n"
+$result += "Activated (OS) : " + $Licensed    + "`r`n"
+$result += "Buildnumber (OS) : " + $buildnumber + "`r`n"
 $result += "Reboot Pending (OS) : " + $trp         + "`r`n"
 $result += "AntiVirus installed : " + $AVInstalled + "`r`n"
     
     
 Write-Host $result
 
-$host.SetShouldExit($exitcode)
-exit
+#$host.SetShouldExit($exitcode)
+#exit
