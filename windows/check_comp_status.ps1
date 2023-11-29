@@ -218,15 +218,15 @@ if($Sophos -or $Forti -or ($Defender -eq "Running")){
 $AVInstalled = $True
     
 }
-$result =  "Compliance check plugin"               + "`r`n"  + "`r`n"
-$result += "CPUs (Cores) : " + $CPUS        + "`r`n"
-$result += "RAM (GB) : " + $RAM         + "`r`n"
-$result += "Diskrelative (%) : " + $diskrel    + "`r`n"
-$result += "Diskfree (GB) : " + $diskgb    + "`r`n"
-$result += "Activated (OS) : " + $Licensed    + "`r`n"
-$result += "Buildnumber (OS) : " + $buildnumber + "`r`n"
-$result += "Reboot Pending (OS) : " + $trp         + "`r`n"
-$result += "AntiVirus installed : " + $AVInstalled + "`r`n"
+$result =  "Compliance check plugin"               + "`r`n"
+$result += "CPUs (Cores) : " + $CPUS        + "`r"
+$result += "RAM (GB) : " + $RAM         + "`r"
+$result += "Diskrelative (%) : " + $diskrel    + "`r"
+$result += "Diskfree (GB) : " + $diskgb    + "`r"
+$result += "Activated (OS) : " + $Licensed    + "`r"
+$result += "Buildnumber (OS) : " + $buildnumber + "`r"
+$result += "Reboot Pending (OS) : " + $trp         + "`r"
+$result += "AntiVirus installed : " + $AVInstalled + "`r"
     
     
 Write-Host $result
