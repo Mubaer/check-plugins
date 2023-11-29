@@ -75,10 +75,11 @@ function Get-InstalledSoftware {
                         "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
                         "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
                     )
-                    New-PSDrive -Name HKU -PSProvider Registry -Root Registry::HKEY_USERS | Out-Null
-                    $UninstallKeys += Get-ChildItem HKU: | Where-Object{ $_.Name -match 'S-\d-\d+-(\d+-){1,14}\d+$' } | ForEach-Object {
-                        "HKU:\$($_.PSChildName)\Software\Microsoft\Windows\CurrentVersion\Uninstall"
-                    }
+                    #New-PSDrive -Name HKU -PSProvider Registry -Root Registry::HKEY_USERS | Out-Null
+                    #$UninstallKeys += Get-ChildItem HKU: | Where-Object{ $_.Name -match 'S-\d-\d+-(\d+-){1,14}\d+$' } | ForEach-Object {
+                    #    "HKU:\$($_.PSChildName)\Software\Microsoft\Windows\CurrentVersion\Uninstall"
+                    #}
+
                     if (-not $UninstallKeys) {
                         Write-Warning -Message 'No software registry keys found'
                     } else {
@@ -140,9 +141,10 @@ function Get-InstalledSoftware {
     
     }
 function Test-PendingReboot {
-        if (Get-ChildItem "HKLM:\Software\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" -EA Ignore) { return $true }
-        if (Get-Item "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" -EA Ignore) { return $true }
-        if (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" -Name PendingFileRenameOperations -EA Ignore) { return $true }
+        If ((Test-Path -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired") -eq $true) { return $true }
+        If ((Test-Path -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\PostRebootReporting") -eq $true) { return $true }
+        If ((Test-Path -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending") -eq $true) { return $true }
+        If ((Test-Path -Path "HKLM:\SOFTWARE\Microsoft\ServerManager\CurrentRebootAttempts") -eq $true) { return $true }
         try { 
             $util = [wmiclass]"\\.\root\ccm\clientsdk:CCM_ClientUtilities"
             $status = $util.DetermineIfRebootPending()
