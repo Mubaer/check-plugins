@@ -136,6 +136,26 @@ case $mode in
         check_uptime
     ;;
 
+    # NAS-MIB: systemUptime
+    nas)
+        baseOID='.1.3.6.1.4.1.24681.1.2.4.0'
+        get_snmp
+        check_uptime
+    ;;
+
+    # QTS-MIB: sysUptime
+    qts)
+        baseOID='.1.3.6.1.4.1.55062.1.12.21.0'
+        get_snmp
+        check_uptime
+    ;;
+
+    # NAS-MIB: systemUptimeEX
+    nasex)
+        baseOID='.1.3.6.1.4.1.24681.1.3.4.0'
+        get_snmp
+        check_uptime
+    ;;
     *)
         echo "(UNKNOWN): mode '-m $mode' not known" ; exit 3 ;;
 esac
