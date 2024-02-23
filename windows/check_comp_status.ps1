@@ -211,7 +211,7 @@ $trp = Test-PendingReboot
 #AV installed?
 $Sophos   = Get-InstalledSoftware -Name "Sophos Endpoint Agent"
 $Forti    = Get-InstalledSoftware -Name "FortiClient"
-$Defender = $(Get-MpComputerStatus).AntivirusEnabled
+$Defender = $(Get-MpComputerStatus -ErrorAction SilentlyContinue).AntivirusEnabled
     
 if($Sophos -or $Forti -or ($Defender -eq "Running")){
     
