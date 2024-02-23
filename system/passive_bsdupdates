@@ -10,7 +10,7 @@ if test `find $crf -mtime -$maxage 2>/dev/null`  ; then
         msg='updates were fetched and no updates to install' 
     elif [ `grep WARNING $crf` ] ; then
         state=WARNING ; ecode=1
-        msg='threre are system updates ready to install'
+        msg='there are system updates ready to install'
     else
         state=UNKNOWN ; ecode=3
         msg="can not interpret content of $crf, pls. check manually"

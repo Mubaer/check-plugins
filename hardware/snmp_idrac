@@ -156,7 +156,7 @@ function check_globalstatus {
     local loop_line
 
     details+="Details:\n"
-    outmsg='iDARC overall status'
+    outmsg='iDRAC overall status'
     for key in ${!oid_names[@]} ; do
         curOID="${baseOID}.$key.0"
         if [ $key -ne 4 ] ; then 

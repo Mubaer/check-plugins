@@ -1,6 +1,6 @@
 ###  Icinga Veeam BackupJob Check   ###
 ###   (c) MR-Daten - Charly Kupke   ###
-###           Version 2.3           ###
+###           Version 2.4           ###
 ### ### ### ### ### ### ### ### ### ###
 
 ### Usage ###
@@ -20,6 +20,9 @@
 # Example: .\check_VeeamBackupJob.ps1 -ignorejob '99-TestJob','50-Lab'
 
 param([String[]]$exclusivejob, [String[]]$ignorejob, [Switch]$runtime, [Int]$runtime_WARNING = 1440, [Int]$runtime_CRITICAL = 2880)
+
+$ErrorActionPreference = "SilentlyContinue"
+$WarningPreference = "SilentlyContinue"
 
 if ($exclusivejob -and $ignorejob) {
     Write-Host "(UNKNOWN) Don't use -exclusivejob and -ignorejob at the same time"
@@ -245,6 +248,19 @@ else {
         $ExitCode = Set-ExitCode -code 2
     }
 }
+
+try {
+    $VeeamCoreDll = (Get-Item "C:\Program Files\Veeam\Backup and Replication\Console\veeam.backup.core.dll").VersionInfo.ProductVersion
+    $VeeamBackupShell = (Get-Item "C:\Program Files\Veeam\Backup and Replication\Console\veeam.backup.shell.exe").VersionInfo.ProductVersion
+}
+catch {
+    $VeeamCoreDll = "n/a"
+    $VeeamBackupShell = "n/a"
+}
+$OutputContent += "`n"
+$OutputContent += "Veeam.Backup.Core=$VeeamCoreDll"
+$OutputContent += "`n"
+$OutputContent += "Veeam.Backup.Shell=$VeeamBackupShell"
 
 Write-Host "(OK): $OutputCount_OK; (WARNING): $OutputCount_WARNING; (CRITICAL): $OutputCount_CRITICAL; (PENDING): $OutputCount_PENDING; Jobs in Check: $OutputCount_Jobs"
 Write-Host ""
