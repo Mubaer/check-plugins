@@ -407,7 +407,7 @@ function temperature {
     if [ -z "${snmpData[$cpuTemperature]}" ] ;then
         outmsg+="Temperature not supported on this device. So we hope it's OK"
     else
-        outmsg+="Temperatures: CPU: ${snmpData[$cpuTemperature]} ℃C / System: ${snmpData[$systemTemperature]} ℃C"
+        outmsg+="Temperatures: CPU: ${snmpData[$cpuTemperature]}℃  / System: ${snmpData[$systemTemperature]}℃"
 
         local value
         for value in cpuTemperature systemTemperature ; do
