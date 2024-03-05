@@ -404,7 +404,7 @@ function temperature {
     local systemTemperature='.1.3.6.1.4.1.55062.1.12.11.0'
 
     # Check if there's a value
-    if [ -z "${snmpData[$cpuTemperature]}" ] ;then
+    if [ -z "${snmpData[$cpuTemperature]}" -o "${snmpData[$cpuTemperature]}" == 'No'  ] ;then
         outmsg+="Temperature not supported on this device. So we hope it's OK"
     else
         outmsg+="Temperatures: CPU: ${snmpData[$cpuTemperature]}℃  / System: ${snmpData[$systemTemperature]}℃"
