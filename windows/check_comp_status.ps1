@@ -188,11 +188,11 @@ $RAM = [Math]::Round($memory.TotalPhysicalMemory/ 1GB)
     
     
 # Diskfree in %
-$disk = Get-CimInstance -ClassName Win32_LogicalDisk
-$diskrel = [Math]::Round($disk[0].Freespace / $disk[0].Size * 100)
+$disk = $(Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID like 'C:'")
+$diskrel = [Math]::Round($disk.Freespace / $disk.Size * 100)
     
 # Diskfree in GB
-$diskgb = [Math]::Round($disk[0].Freespace / 1GB)
+$diskgb = [Math]::Round($disk.Freespace / 1GB)
 
 
 # Windows activated?
@@ -211,8 +211,9 @@ $trp = Test-PendingReboot
 #AV installed?
 $Sophos   = Get-InstalledSoftware -Name "Sophos Endpoint Agent"
 $Forti    = Get-InstalledSoftware -Name "FortiClient"
-$Defender = $(Get-MpComputerStatus).AntivirusEnabled
-    
+if(Get-Command Get-MpComputerStatus -ErrorAction SilentlyContinue ){
+$Defender = $(Get-MpComputerStatus -ErrorAction SilentlyContinue).AntivirusEnabled
+}    
 if($Sophos -or $Forti -or ($Defender -eq "Running")){
     
 $AVInstalled = $True
