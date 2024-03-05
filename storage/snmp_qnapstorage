@@ -51,6 +51,16 @@ while getopts "H:C:u:x:X:a:A:l:w:c:m:f:F:t:Bhd" OPTION ; do
     esac
 done
 
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Load library functions
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+callpath="$(dirname "$0")"
+libdir="${callpath}/../lib"
+
+#source $libdir/generic_plugin.shlib
+source $libdir/generic_snmp.shlib
+#source $libdir/convert_and_calc.shlib
 #######
 # Functions
 #######
@@ -389,6 +399,23 @@ function target_byfilter() {
     done
 }
 
+function temperature {
+    local cpuTemperature='.1.3.6.1.4.1.55062.1.12.10.0'
+    local systemTemperature='.1.3.6.1.4.1.55062.1.12.11.0'
+
+    # Check if there's a value
+    if [ -z "${snmpData[$cpuTemperature]}" ] ;then
+        outmsg+="Temperature not supported on this device. So we hope it's OK"
+    else
+        outmsg+="Temperatures: CPU: ${snmpData[$cpuTemperature]} ℃C / System: ${snmpData[$systemTemperature]} ℃C"
+
+        local value
+        for value in cpuTemperature systemTemperature ; do
+            perfdata+="$value=${snmpData[${!value}]} "
+        done
+    fi
+}
+
 function get_snmp_and_process {
     #
     # Compose snmp command
@@ -452,6 +479,7 @@ mode=${mode:=volume}
 filter=${filter:=.}
 tout=${tout:=20}
 
+check_arguments
 # 
 # precission calculator 'bc' compat. check
 #
@@ -503,6 +531,17 @@ case $mode in
         id[status]=6
         get_snmp_and_process 
         target_byfilter $filter
+    ;;
+
+    temperature)
+        # cpuTemperature
+        baseOID='.1.3.6.1.4.1.55062.1.12.10.0'
+        get_snmp_and_process
+
+        # systemTemperature
+        baseOID='.1.3.6.1.4.1.55062.1.12.11.0'
+        get_snmp_and_process
+        temperature
     ;;
 
     *)
