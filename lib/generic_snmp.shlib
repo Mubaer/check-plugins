@@ -1,17 +1,55 @@
 #
 # Check Plugin Functions for SNMP-Checks
 #
-# Author: msander
-#   Version 0.1 Mon Apr  3 16:35:48 CEST 2023
+# Author: Xin Qu
+#
+#	Version 1.0 Wed Mar  6 17:00:07 CET 2024
+#		New function "get_snmp"
+#
+#	Version 0.1 Mon Apr  3 16:35:48 CEST 2023
+#
 
 function check_arguments {
-        if [ -z "$hostname" ] ; then
-                echo "$0 required argument -H <hostname> missing"
-                exit 3
-        elif [ -z "$authuser" -a -z "$community" ] ; then
-                echo "$0 SNMP credentials missing: either -C <community> or snmp V3:"
-                echo "  -u <authuser> -a <authproto> -A <authpass> -x <secproto> -X <secpass> -l <seclevel>"
-                exit 3
-        fi
+	if [ -z "$hostname" ] ; then
+		echo "$0 required argument -H <hostname> missing"
+		exit 3
+	elif [ -z "$authuser" -a -z "$community" ] ; then
+		echo "$0 SNMP credentials missing: either -C <community> or snmp V3:"
+		echo "	-u <authuser> -a <authproto> -A <authpass> -x <secproto> -X <secpass> -l <seclevel>"
+		exit 3
+	fi
 }
 
+function get_snmp {
+	#
+	# Compose snmp command
+	#
+	local oid=$1
+	if [ -n "$authuser" ]; then snmpv=3; else snmpv=2c; fi
+
+	local snmpcmd="snmpget -Onq -v $snmpv -t $tout -r 3 \
+		$community $authuser $privproto $privpass $seclevel $authproto $authpass \
+		$hostname  $oid"
+
+	if [ -n "$debug" ] ; then echo "debug: $snmpcmd" ; fi
+
+
+	# First of all, get the SNMP-Data
+	local snmpResponse=$($snmpcmd 2>&1)
+	local snmpexit=$?
+
+	if [ -n "$debug" ] ; then echo "debug: $snmpResponse" ; fi
+
+	if [ $snmpexit -ne 0 ] ; then
+		echo "(UNKNOWN): Problem fetching SNMP data."
+		echo
+		echo "SNMP Output was: $snmpResponse"
+		exit 3
+	fi
+
+	while read oid value unit
+	do
+		snmpData[$oid]="$value"
+		snmpUnit[$oid]="$unit"
+	done <<< "$snmpResponse"
+}
