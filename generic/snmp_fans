@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+
+# This plugin checks the fan status of various device types
+#
+# Author: Xin Qu
+#
+# Version: 0.1 2024-03-09
+#	First test version
+#
+#
+
+# Define Vars
+declare -A snmpData
+declare -A snmpUnit
+declare -A id
+declare -A nameMap
+
+glob_rcode=0
+
+#
+# CLI Parsing
+#
+
+OPTERR=1
+while getopts "H:C:u:x:X:a:A:l:w:c:m:f:F:t:Bhd" OPTION ; do
+	case "${OPTION}" in
+		H) hostname=${OPTARG}		;;
+		C) community="-c ${OPTARG}" ;;
+		u) authuser="-u ${OPTARG}"	;;
+		a) authproto="-a ${OPTARG}" ;;
+		A) authpass="-A ${OPTARG}"	;;
+		x) privproto="-x ${OPTARG}" ;;
+		X) privpass="-X ${OPTARG}"	;;
+		l) seclevel="-l ${OPTARG}"	;;
+		w) warn=${OPTARG}			;;
+		c) crit=${OPTARG}			;;
+		m) mode=${OPTARG}			;;
+		f) filter=${OPTARG}			;;
+		F) neg_filter=${OPTARG}		;;
+		t) tout=${OPTARG}			;;
+		B) nobulk=1					;;
+		h) helpme=1					;;
+		d) debug=1					;;
+	esac
+done
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Load library functions
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+callpath="$(dirname "$0")"
+libdir="${callpath}/../lib"
+
+source $libdir/generic_plugin.shlib
+source $libdir/generic_snmp.shlib
+source $libdir/convert_and_calc.shlib
+
+#######
+# Functions
+#######
+
+function fan_table {
+	local filter=$1
+
+	outmsg='Fan Check: '
+	for eName in "${!nameMap[@]}"
+    do
+        if [[  "$eName" =~ $filter ]]
+        then
+			outElements+=(${nameMap[$eName]})
+        fi
+    done
+	local loop_rcode=0
+    local loop_state
+
+    for element in  ${outElements[@]}
+    do
+        name="${snmpData[${baseOID}.${id[name]}.$element]} ${snmpUnit[${baseOID}.${id[name]}.$element]}"
+		# remove quotes
+		name=${name//\"/}
+        speed=${snmpData[${baseOID}.${id[speed]}.$element]}
+		outmsg+="$name: $speed RPM; "
+		perfdata+="$name=$speed;$warn;$crit "
+		if [ -n "$crit" -a -n "$warn" ] ; then
+			glob_rcode=$( calc_globalstate $speed $warn $crit 'low' )
+		fi
+	done
+
+}
+
+#
+# MAIN
+#
+
+#
+# set default values
+#
+mode=${mode:=volume}
+filter=${filter:=.}
+tout=${tout:=20}
+
+check_snmp_args
+check_threshold_args
+#
+# precission calculator 'bc' compat. check
+#
+if [ -x /usr/local/bin/bc ]; then
+	bc=/usr/local/bin/bc
+elif [ -x /usr/bin/bc ] ; then
+	bc=/usr/bin/bc
+fi
+
+case $mode in
+	qnap)
+		baseOID='.1.3.6.1.4.1.55062.1.12.9.1'
+		id[index]=1
+		id[name]=2
+		id[speed]=3
+		get_snmp_and_process
+		fan_table .
+	;;
+	
+	*)
+		echo "(UNKNOWN): mode '-m $mode' not known" ; exit 3 ;;
+esac
+
+
+#
+# Tell monitoring system what we found out
+#
+echo -en "$( state_string $glob_rcode ) $outmsg"
+if [ -n "$details" ] ; then echo -en "\n\n$details" ; fi
+if [ -n "$perfdata" ] ; then echo -en "|$perfdata" ; fi
+echo
+
+exit $glob_rcode
