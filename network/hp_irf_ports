@@ -125,7 +125,7 @@ function check_irf_status {
 mode=${mode:=snmpv2}
 tout=${tout:=20}
 
-check_arguments
+check_snmp_args
 
 baseOID='.1.3.6.1.4.1.25506.2.91.4.1.3'
 get_snmp
