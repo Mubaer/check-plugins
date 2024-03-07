@@ -1,7 +1,7 @@
 #
 # Check Plugin Functions for converting and calculation data
 #
-# Author: msander
+# Author: Xin Qu
 #   Version 0.1 Mon Apr  3 16:35:48 CEST 2023
 
 # Print human readable representation of seconds
