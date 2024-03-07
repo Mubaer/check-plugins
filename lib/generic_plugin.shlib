@@ -2,65 +2,88 @@
 # Generally useful Check Plugin Functions 
 #
 # Author: msander
-#   Version 0.1 Mon Apr  3 16:35:48 CEST 2023
+#	Version 0.1 Mon Apr  3 16:35:48 CEST 2023
+
+# We need warn AND crit
+#
+function check_threshold_args {
+	if [ -n "$warn" -o -n "$crit" ] ;then
+		if [ -z "$warn" -o -z "$crit" ] ;then
+			echo "We need both options, '-c' and '-w', or none of them"
+			exit 3
+		fi
+	fi
+}
 
 # calculate the current state by comparing value to thresholds
 function calc_state() {
-    local value=$1;local warn=$2;local crit=$3;local rcode
+	local value=$1;local warn=$2;local crit=$3;local logic=$4; local rcode;
 
-    if [ $value -gt $crit ] ; then
-        rcode=2
-    elif [ $value -gt $warn ] ; then
-        rcode=1
-    else
-        rcode=0
-    fi
-    echo $rcode
+	: ${logic:=high}
+	case $logic in
+		high)
+			if [ $value -gt $crit ] ; then
+				rcode=2
+			elif [ $value -gt $warn ] ; then
+				rcode=1
+			else
+				rcode=0
+			fi	;;
+		low)
+			if [ $value -lt $crit ] ; then
+				rcode=2
+			elif [ $value -lt $warn ] ; then
+				rcode=1
+			else
+				rcode=0
+			fi	;;
+	esac
+	echo $rcode
 }
 
 # take into account the current global return code
 function calc_globalstate() {
-    local value=$1;local warn=$2;local crit=$3;local rcode
+	local value=$1;local warn=$2;local crit=$3;local logic=$4; local rcode
 
-    rcode=$( calc_state $value $warn $crit )
+	rcode=$( calc_state $value $warn $crit $logic )
 
-    if [ $rcode -le $glob_rcode ] ; then
-        rcode=$glob_rcode
-    else
-        rcode=$rcode
-    fi
-    echo $rcode
+	if [ $rcode -le $glob_rcode ] ; then
+		rcode=$glob_rcode
+	else
+		rcode=$rcode
+	fi
+	echo $rcode
 }
 
 # get new global state by comparing value to old global state
 function set_globalstate() {
-    local rcode=$1
+	local rcode=$1
 
-    if [ $rcode -le $glob_rcode ] ; then
-        rcode=$glob_rcode
-    else
-        rcode=$rcode
-    fi
-    echo $rcode
+	if [ $rcode -le $glob_rcode ] ; then
+		rcode=$glob_rcode
+	else
+		rcode=$rcode
+	fi
+	echo $rcode
 }
 
 # return string representation of return-code
 function state_string() {
-    local rcode=$1
-    local string
-    case $rcode in 
-        0) string='(OK):' ;;
-        1) string='(WARNING):' ;;
-        2) string='(CRITICAL):' ;;
-        3) string='(UNKNOWN):' ;;
-    esac
-    echo $string
+	local rcode=$1
+	local string
+	case $rcode in 
+		0) string='(OK):' ;;
+		1) string='(WARNING):' ;;
+		2) string='(CRITICAL):' ;;
+		3) string='(UNKNOWN):' ;;
+	esac
+	echo $string
 }
 
 # print a debug message to stderr
 function dbg_msg {
-    if [ "$debug" ] ; then
-        >&2 echo "DEBUG: $1"
-    fi
+	if [ "$debug" ] ; then
+		>&2 echo "DEBUG: $1"
+	fi
 }
 
