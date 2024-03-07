@@ -237,7 +237,7 @@ mode=${mode:=subsystems}
 filter=${filter:=.}
 tout=${tout:=20}
 
-check_arguments
+check_snmp_args
 # 
 # precission calculator 'bc' compat. check
 #

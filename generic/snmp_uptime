@@ -108,7 +108,7 @@ mode=${mode:=snmpv2}
 tout=${tout:=20}
 seclevel=${seclevel:=-l authPriv}
 
-check_arguments
+check_snmp_args
 # 
 # precission calculator 'bc' compat. check
 #

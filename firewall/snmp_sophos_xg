@@ -482,7 +482,7 @@ ha_disabled_rc=${ha_disabled_rc:=0}
 ha_local_status_ok=${ha_local_status_ok:=primary}
 ha_peer_status_ok=${ha_peer_status_ok:=auxiliary}
 
-check_arguments
+check_snmp_args
 # 
 # precission calculator 'bc' compat. check
 #
