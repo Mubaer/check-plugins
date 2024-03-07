@@ -6,6 +6,9 @@
 #
 # Author: Xin Qu
 #
+# Version: 1.3.1 2024-03-10
+#	Features: Code consolidation
+#
 # Version: 1.3 2024-03-06
 #	Features: Temperatures, System Info
 #
@@ -62,18 +65,12 @@ done
 callpath="$(dirname "$0")"
 libdir="${callpath}/../lib"
 
-#source $libdir/generic_plugin.shlib
+source $libdir/generic_plugin.shlib
 source $libdir/generic_snmp.shlib
-#source $libdir/convert_and_calc.shlib
+source $libdir/convert_and_calc.shlib
 #######
 # Functions
 #######
-
-function percent() {
-	local total=$1
-	local part=$2
-	$bc -l <<< "scale=4; r( ($part / $total * 100), 0 )"
-}
 
 function calc_state() {
 	local value=$1;local warn=$2;local crit=$3;local rcode
@@ -471,64 +468,6 @@ function system_info {
 	done
 }
 
-function get_snmp_and_process {
-	#
-	# Compose snmp command
-	#
-	local -a elementIndex
-	if [ "$nobulk" ]; then walk=snmpwalk;  else walk=snmpbulkwalk; fi
-	if [ -n "$authuser" ]; then snmpv=3; else snmpv=2c; fi
-
-	snmpcmd="$walk -Onq -v $snmpv -t $tout -r 3 \
-		$community $authuser $privproto $privpass $seclevel $authproto $authpass \
-		$hostname  $baseOID"
-
-	if [ -n "$debug" ] ; then echo "debug: $snmpcmd" ; fi
-
-
-	# First of all, get the SNMP-Data
-	snmpResponse=$($snmpcmd 2>&1)
-	snmpexit=$?
-
-	if [ -n "$debug" ] ; then echo "debug: $snmpResponse" ; fi
-
-	if [ $snmpexit -ne 0 ] ; then
-		echo "(UNKNOWN): Problem fetching SNMP data."
-		echo
-		echo "SNMP Output was: $snmpResponse"
-		exit 3
-	fi
-
-	while read oid value unit
-	do
-		snmpData[$oid]="$value"
-		snmpUnit[$oid]="$unit"
-	done <<< "$snmpResponse"
-
-	#### building indexes
-	#
-	# (only when a index is defined)
-
-	# build element index
-	if [ -n "${id[index]}" ] ; then
-		for key in ${!snmpData[@]} ; do
-			if [[ $key == "$baseOID.${id[index]}"* ]] ; then
-			elementIndex+=( ${snmpData[$key]} )
-			fi
-		done
-
-		# build name map
-		for element in	${elementIndex[@]}
-		do
-		nameMap[${snmpData[${baseOID}.${id[name]}.$element]}]=${snmpData[${baseOID}.${id[index]}.$element]}
-		done
-		fi
-
-	#
-	#
-	#### / building indexes
-}
-
 #
 # MAIN
 #
@@ -540,7 +479,8 @@ mode=${mode:=volume}
 filter=${filter:=.}
 tout=${tout:=20}
 
-check_arguments
+check_snmp_args
+check_threshold_args
 #
 # precission calculator 'bc' compat. check
 #

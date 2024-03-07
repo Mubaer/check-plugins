@@ -3,13 +3,16 @@
 #
 # Author: Xin Qu
 #
-#	Version 1.0 Wed Mar  6 17:00:07 CET 2024
+#	Version 1.1 Mar  7 10:10:38 CET 2024
+#		imported 'get_snmp_and_process' from qnap-storage
+#
+#	Version 1.0 Mar  6 17:00:07 CET 2024
 #		New function "get_snmp"
 #
-#	Version 0.1 Mon Apr  3 16:35:48 CEST 2023
+#	Version 0.1 Apr  3 16:35:48 CEST 2023
 #
 
-function check_arguments {
+function check_snmp_args {
 	if [ -z "$hostname" ] ; then
 		echo "$0 required argument -H <hostname> missing"
 		exit 3
@@ -20,6 +23,7 @@ function check_arguments {
 	fi
 }
 
+# gets a single value from a single OID
 function get_snmp {
 	#
 	# Compose snmp command
@@ -31,14 +35,13 @@ function get_snmp {
 		$community $authuser $privproto $privpass $seclevel $authproto $authpass \
 		$hostname  $oid"
 
-	if [ -n "$debug" ] ; then echo "debug: $snmpcmd" ; fi
-
+	dbg_msg "debug: $snmpcmd"
 
 	# First of all, get the SNMP-Data
 	local snmpResponse=$($snmpcmd 2>&1)
 	local snmpexit=$?
 
-	if [ -n "$debug" ] ; then echo "debug: $snmpResponse" ; fi
+	dbg_msg "$snmpResponse"
 
 	if [ $snmpexit -ne 0 ] ; then
 		echo "(UNKNOWN): Problem fetching SNMP data."
@@ -52,4 +55,64 @@ function get_snmp {
 		snmpData[$oid]="$value"
 		snmpUnit[$oid]="$unit"
 	done <<< "$snmpResponse"
+}
+
+# gets a bulk of OIDs and processes SNMP-Tables if
+# a value for 'id[index]' is given
+function get_snmp_and_process {
+	#
+	# Compose snmp command
+	#
+	local -a elementIndex
+	if [ "$nobulk" ]; then walk=snmpwalk;  else walk=snmpbulkwalk; fi
+	if [ -n "$authuser" ]; then snmpv=3; else snmpv=2c; fi
+
+	snmpcmd="$walk -Onq -v $snmpv -t $tout -r 3 \
+		$community $authuser $privproto $privpass $seclevel $authproto $authpass \
+		$hostname  $baseOID"
+
+	dbg_msg "debug: $snmpcmd"
+
+	# First of all, get the SNMP-Data
+	snmpResponse=$($snmpcmd 2>&1)
+	snmpexit=$?
+
+	dbg_msg "$snmpResponse"
+
+	if [ $snmpexit -ne 0 ] ; then
+		echo "(UNKNOWN): Problem fetching SNMP data."
+		echo
+		echo "SNMP Output was: $snmpResponse"
+		exit 3
+	fi
+
+	while read oid value unit
+	do
+		snmpData[$oid]="$value"
+		snmpUnit[$oid]="$unit"
+	done <<< "$snmpResponse"
+
+	#### building indexes
+	#
+	# (only when a index is defined)
+
+	# build element index
+	if [ -n "${id[index]}" ] ; then
+		for key in ${!snmpData[@]} ; do
+			if [[ $key == "$baseOID.${id[index]}"* ]] ; then
+			elementIndex+=( ${snmpData[$key]} )
+			fi
+		done
+
+		# build name map
+		for element in	${elementIndex[@]};do
+			nameMap[${snmpData[${baseOID}.${id[name]}.$element]}${snmpUnit[${baseOID}.${id[name]}.$element]}]=${snmpData[${baseOID}.${id[index]}.$element]}
+		done
+		fi
+
+	#
+	#
+	#### / building indexes
+	if [ -n "$debug" ] ; then echo "DEBUG [elementIndex]: ${elementIndex[@]}" ; fi
+	if [ -n "$debug" ] ; then echo "DEBUG [nameMap]: ${nameMap[@]}" ; fi
 }
