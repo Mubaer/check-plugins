@@ -2,7 +2,16 @@
 # Check Plugin Functions for converting and calculation data
 #
 # Author: Xin Qu
-#   Version 0.1 Mon Apr  3 16:35:48 CEST 2023
+#   Version 0.2 2024-03-11
+
+#
+# precission calculator 'bc' compat. check
+#
+if [ -x /usr/local/bin/bc ]; then
+	bc=/usr/local/bin/bc
+elif [ -x /usr/bin/bc ] ; then
+	bc=/usr/bin/bc
+fi
 
 # Print human readable representation of seconds
 function second_to_hr() {
