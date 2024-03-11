@@ -3,6 +3,9 @@
 #
 # Author: Xin Qu
 #
+#	Version 1.2 Mon Mar 11 17:19:24 CET 2024
+#		imported modular snmp processing from snmp_sophos_sg
+#
 #	Version 1.1 Mar  7 10:10:38 CET 2024
 #		imported 'get_snmp_and_process' from qnap-storage
 #
@@ -113,6 +116,113 @@ function get_snmp_and_process {
 	#
 	#
 	#### / building indexes
-	if [ -n "$debug" ] ; then echo "DEBUG [elementIndex]: ${elementIndex[@]}" ; fi
-	if [ -n "$debug" ] ; then echo "DEBUG [nameMap]: ${nameMap[@]}" ; fi
 }
+
+
+function get_bulk_snmp {
+	#
+	# Compose snmp command
+	#
+	if [ "$nobulk" ]; then walk=snmpwalk;  else walk=snmpbulkwalk; fi
+	if [ -n "$authuser" ]; then snmpv=3; else snmpv=2c; fi
+
+	local snmpcmd="$walk -Onq -v $snmpv -t $tout -r 3 \
+		$community $authuser $privproto $privpass $seclevel $authproto $authpass \
+		$hostname  $baseOID"
+
+	dbg_msg "snmpcmd: $snmpcmd"
+
+	# First of all, get the SNMP-Data
+	local snmpResponse=$($snmpcmd 2>&1)
+	local snmpexit=$?
+
+	dbg_msg "snmpresponse: $snmpResponse"
+
+	if [ $snmpexit -ne 0 ] ; then
+		echo "(UNKNOWN): Problem fetching SNMP data."
+		echo
+		echo "SNMP Output was: $snmpResponse"
+		exit 3
+	fi
+
+	while read oid value unit
+	do
+		snmpData[$oid]="$value"
+		snmpUnit[$oid]="$unit"
+	done <<< "$snmpResponse"
+}
+
+function process_snmp_index {
+	#### building indexes
+	# required index[id] and index[name] set
+	#
+
+	# build element index
+	for key in ${!snmpData[@]} ; do
+		if [[ $key == "$baseOID.${id[index]}"* ]] ; then
+		elementIndex+=( ${snmpData[$key]} )
+		fi
+	done
+
+	# build name map
+	local element
+	for element in	${elementIndex[@]}
+	do
+		nameMap[${snmpData[${baseOID}.${id[name]}.$element]}]=${snmpData[${baseOID}.${id[index]}.$element]}
+	done
+	#
+	#
+	#### / building indexes
+	dbg_msg "DEBUG [nameMap]: ${nameMap[@]}"
+}
+
+function process_snmp_noindex {
+	#### building indexes
+	# for pure lists without an 'index'
+	#
+
+	# build element list
+	local element_counter=0
+	for element in ${snmpData[@]} ; do
+			elementList[$element_counter]=$element
+			: $(( element_counter++ ))
+	done
+	dbg_msg "DEBUG []: ${elementList[@]}"
+}
+
+function process_snmp_namedindex {
+	#### building indexes
+	# for tables without an 'index' column, use last OID part as index
+	#
+
+	# build element index. Last OID-Tree-Level is the index
+	for key in ${!snmpData[@]} ; do
+		if [[ $key == "$baseOID.${id[name]}".* ]] ; then
+		key=${key/.*\./}
+		elementList+=( $key )
+		fi
+	done
+	dbg_msg "DEBUG [elementList]: ${elementList[*]}"
+
+	# build name map
+	local element
+	local namePart1
+	local namePart2
+	for element in	${elementList[@]}
+	do
+		namePart1="${snmpData[${baseOID}.${id[name]}.$element]}"
+		namePart2="${snmpUnit[${baseOID}.${id[name]}.$element]}"
+		if [ -z "$namePart2" ] ; then
+			nameMap[$namePart1]=$element
+		else
+			nameMap[${namePart1} ${namePart2}]=$element
+		fi
+	done
+	#
+	#
+	#### / building indexes
+	dbg_msg "DEBUG [nameMap]: ${nameMap[*]}"
+}
+
+# vim: filetype=bash
+
