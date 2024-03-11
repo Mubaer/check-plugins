@@ -95,7 +95,7 @@ function fan_table {
 #
 # set default values
 #
-mode=${mode:=volume}
+mode=${mode:=qnap}
 filter=${filter:=.}
 tout=${tout:=20}
 
