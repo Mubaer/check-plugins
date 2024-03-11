@@ -1,0 +1,229 @@
+#!/usr/bin/env bash
+
+# This plugin checks various (hardware) entities of
+# ENTITY-MIB, HH3C-ENTITY-EXT-MIB
+#
+# Author: Xin Qu
+#
+# Version: 0.1 2024-03-15
+#	First test version
+#
+#
+
+# Define Vars
+declare -A snmpData
+declare -A snmpUnit
+declare -A id
+declare -A nameMap
+
+glob_rcode=0
+
+#
+# CLI Parsing
+#
+
+OPTERR=1
+while getopts "H:C:u:x:X:a:A:l:w:c:m:f:F:t:Bhd" OPTION ; do
+	case "${OPTION}" in
+		H) hostname=${OPTARG}		;;
+		C) community="-c ${OPTARG}" ;;
+		u) authuser="-u ${OPTARG}"	;;
+		a) authproto="-a ${OPTARG}" ;;
+		A) authpass="-A ${OPTARG}"	;;
+		x) privproto="-x ${OPTARG}" ;;
+		X) privpass="-X ${OPTARG}"	;;
+		l) seclevel="-l ${OPTARG}"	;;
+		w) warn=${OPTARG}			;;
+		c) crit=${OPTARG}			;;
+		m) mode=${OPTARG}			;;
+		f) filter=${OPTARG}			;;
+		F) neg_filter=${OPTARG}		;;
+		t) tout=${OPTARG}			;;
+		B) nobulk=1					;;
+		h) helpme=1					;;
+		d) debug=1					;;
+	esac
+done
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Load library functions
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+callpath="$(dirname "$0")"
+libdir="${callpath}/../lib"
+
+source $libdir/generic_plugin.shlib
+source $libdir/generic_snmp.shlib
+source $libdir/convert_and_calc.shlib
+
+#######
+# Functions
+#######
+
+function filter_entity_byname {
+
+	local filter=$1
+	local idx
+	local eName
+	local nameOID
+
+	for idx in "${elementList[@]}"
+    do
+		nameOID="${baseOID}.${id[name]}.$idx"
+		eNamePart1=$snmpData[$nameOID]
+		if [ -z "${snmpUnit[$nameOID]}" ] ; then
+			eName=${snmpData[$nameOID]}
+		else
+			eName="${snmpData[$nameOID]} ${snmpUnit[$nameOID]}"
+        fi
+		if [[ "$eName" =~ $filter ]] ;then
+			dbg_msg "Adding $eName to index $idx"
+			outElements+=( $idx )
+		fi
+    done
+}
+
+function filter_entity_byclass {
+
+	local filter=$1
+	local idx
+	local class
+	local nameOID
+
+	outmsg="$checkName: "
+	for idx in "${elementList[@]}"
+    do
+		classOID="${baseOID}.${id[class]}.$idx"
+		class=${snmpData[$classOID]}
+		if [[ "$class" == "$filter" ]] ;then
+			dbg_msg "Adding $class to index $idx"
+			outElements+=( $idx )
+		fi
+    done
+}
+
+function check_element_error_status {
+	# Requires "filter_entity" to run before
+	local oid=$1
+	local outPrefix=$2
+	local element
+	local eStatus
+	local eName
+	local loop_rcode
+
+	outmsg="$outPrefix "
+	for element in ${outElements[@]} ; do
+
+		# get element name
+		eName1=${snmpData[$baseOID.${id[name]}.$element]}
+		if [ -z "${snmpUnit[$baseOID.${id[name]}.$element]}" ] ;then
+			eName="${snmpData[$baseOID.${id[name]}.$element]}"
+		else
+			eName="${snmpData[$baseOID.${id[name]}.$element]} ${snmpUnit[$baseOID.${id[name]}.$element]}"
+		fi
+		# remove quotes
+		eName=${eName//\"/}
+		
+		# get error status
+		get_snmp $oid.$element
+		eStatus=$( map_hh3cEntityExtErrorStatus ${snmpData[$oid.$element]} )
+		outmsg+="$eName: $eStatus; "
+		glob_rcode=$( set_globalstate $( rate_hh3cEntityExtErrorStatus ${snmpData[$oid.$element]} ))
+	done
+}
+
+
+function map_hh3cEntityExtErrorStatus {
+	local int=$1
+
+	local -A error_map
+	error_map[1]='notSupported'
+	error_map[2]='normal'
+	error_map[3]='postFailure'
+	error_map[4]='entityAbsent'
+	error_map[11]='poeError'
+	error_map[21]='stackError'
+	error_map[22]='stackPortBlocked'
+	error_map[23]='stackPortFailed'
+	error_map[31]='sfpRecvError'
+	error_map[32]='sfpSendError'
+	error_map[33]='sfpBothError'
+	error_map[41]='fanError'
+	error_map[51]='psuError'
+	error_map[61]='rpsError'
+	error_map[71]='moduleFaulty'
+	error_map[81]='sensorError'
+	error_map[91]='hardwareFaulty'
+	echo ${error_map[$int]}
+}
+
+function rate_hh3cEntityExtErrorStatus {
+	local int=$1
+
+	local -A error_map
+	error_map[1]=0
+	error_map[2]=0
+	error_map[3]=2
+	error_map[4]=0
+	error_map[11]=2
+	error_map[21]=2
+	error_map[22]=2
+	error_map[23]=2
+	error_map[31]=2
+	error_map[32]=2
+	error_map[33]=2
+	error_map[41]=2
+	error_map[51]=2
+	error_map[61]=2
+	error_map[71]=2
+	error_map[81]=2
+	error_map[91]=2
+	echo ${error_map[$int]}
+}
+
+#
+# MAIN
+#
+
+#
+# set default values
+#
+mode=${mode:=fanHP}
+filter=${filter:=.}
+tout=${tout:=20}
+
+check_snmp_args
+check_threshold_args
+#  entPhysicalTable  .1.3.6.1.2.1.47.1.1.1
+#  hh3cEntityExtStateTable  .1.3.6.1.4.1.25506.2.6.1.1.1
+
+case $mode in
+	fanHP)
+		baseOID='.1.3.6.1.2.1.47.1.1.1.1'
+		id[name]=7
+		id[class]=5
+		get_bulk_snmp
+		process_snmp_namedindex
+		#filter_entity_byname FAN
+		filter_entity_byclass 7
+
+		# Switch to hh3cEntityExtStateTable
+		extOID='.1.3.6.1.4.1.25506.2.6.1.1.1.1'
+		fanOID="${extOID}.19"
+		check_element_error_status $fanOID 'Fan Check:'
+	;;
+	
+	*)
+		echo "(UNKNOWN): mode '-m $mode' not known" ; exit 3 ;;
+esac
+
+
+#
+# Tell monitoring system what we found out
+#
+echo -en "$( state_string $glob_rcode ) $outmsg"
+if [ -n "$details" ] ; then echo -en "\n\n$details" ; fi
+if [ -n "$perfdata" ] ; then echo -en "|$perfdata" ; fi
+echo
+
+exit $glob_rcode
