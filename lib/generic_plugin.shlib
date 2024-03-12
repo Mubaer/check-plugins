@@ -1,7 +1,10 @@
 #
 # Generally useful Check Plugin Functions 
 #
-# Author: msander
+# Author: Xin Qu
+#	Version 0.2 Tue Mar 12 12:51:18 CET 2024
+#		added option to align state strings for a table
+#
 #	Version 0.1 Mon Apr  3 16:35:48 CEST 2023
 
 # We need warn AND crit
@@ -70,14 +73,25 @@ function set_globalstate() {
 # return string representation of return-code
 function state_string() {
 	local rcode=$1
+	local align=${2:-n}
 	local string
-	case $rcode in 
-		0) string='(OK):' ;;
-		1) string='(WARNING):' ;;
-		2) string='(CRITICAL):' ;;
-		3) string='(UNKNOWN):' ;;
-	esac
-	echo $string
+
+	if [ "$align" == 'n' ] ; then
+		case $rcode in 
+			0) string='(OK):' ;;
+			1) string='(WARNING):' ;;
+			2) string='(CRITICAL):' ;;
+			3) string='(UNKNOWN):' ;;
+		esac
+	else
+		case $rcode in 
+			0) string='(OK):      ' ;;
+			1) string='(WARNING): ' ;;
+			2) string='(CRITICAL):' ;;
+			3) string='(UNKNOWN): ' ;;
+		esac
+	fi
+	echo "$string"
 }
 
 # print a debug message to stderr
