@@ -101,14 +101,6 @@ tout=${tout:=20}
 
 check_snmp_args
 check_threshold_args
-#
-# precission calculator 'bc' compat. check
-#
-if [ -x /usr/local/bin/bc ]; then
-	bc=/usr/local/bin/bc
-elif [ -x /usr/bin/bc ] ; then
-	bc=/usr/bin/bc
-fi
 
 case $mode in
 	qnap)
@@ -128,9 +120,4 @@ esac
 #
 # Tell monitoring system what we found out
 #
-echo -en "$( state_string $glob_rcode ) $outmsg"
-if [ -n "$details" ] ; then echo -en "\n\n$details" ; fi
-if [ -n "$perfdata" ] ; then echo -en "|$perfdata" ; fi
-echo
-
-exit $glob_rcode
+trigger_exit
