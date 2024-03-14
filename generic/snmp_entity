@@ -5,6 +5,10 @@
 #
 # Author: Xin Qu
 #
+# Version: 1.0 2024-03-18
+#	modified check to a general check for HP entities, taking entity classes
+#	from command line
+#
 # Version: 0.2 2024-03-18
 #	Make script more usable in a generic way
 #	
@@ -28,25 +32,25 @@ glob_rcode=0
 OPTERR=1
 while getopts "H:C:u:x:X:a:A:l:w:c:k:m:n:f:F:t:Bhd" OPTION ; do
 	case "${OPTION}" in
-		H) hostname=${OPTARG}		;;
-		C) community="-c ${OPTARG}" ;;
-		u) authuser="-u ${OPTARG}"	;;
-		a) authproto="-a ${OPTARG}" ;;
-		A) authpass="-A ${OPTARG}"	;;
-		x) privproto="-x ${OPTARG}" ;;
-		X) privpass="-X ${OPTARG}"	;;
-		l) seclevel="-l ${OPTARG}"	;;
-		w) warn=${OPTARG}			;;
-		c) crit=${OPTARG}			;;
-		m) mode=${OPTARG}			;;
-		n) checkName=${OPTARG}		;;
-		k) classList=${OPTARG}		;;
-		f) filter=${OPTARG}			;;
-		F) neg_filter=${OPTARG}		;;
-		t) tout=${OPTARG}			;;
-		B) nobulk=1					;;
-		h) helpme=1					;;
-		d) debug=1					;;
+		H) hostname=${OPTARG};;
+		C) community="-c ${OPTARG}";;
+		u) authuser="-u ${OPTARG}";;
+		a) authproto="-a ${OPTARG}";;
+		A) authpass="-A ${OPTARG}";;
+		x) privproto="-x ${OPTARG}";;
+		X) privpass="-X ${OPTARG}";;
+		l) seclevel="-l ${OPTARG}";;
+		w) warn=${OPTARG};;
+		c) crit=${OPTARG};;
+		m) mode=${OPTARG};;
+		n) checkName=${OPTARG};;
+		k) classList=${OPTARG};;
+		f) filter=${OPTARG};;
+		F) neg_filter=${OPTARG};;
+		t) tout=${OPTARG};;
+		B) nobulk=1;;
+		h) helpme=1;;
+		d) debug=1;;
 	esac
 done
 
