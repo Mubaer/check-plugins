@@ -5,6 +5,9 @@
 #
 # Author: Xin Qu
 #
+# Version: 0.2 2024-03-18
+#	Make script more usable in a generic way
+#	
 # Version: 0.1 2024-03-15
 #	First test version
 #
@@ -36,6 +39,8 @@ while getopts "H:C:u:x:X:a:A:l:w:c:m:f:F:t:Bhd" OPTION ; do
 		w) warn=${OPTARG}			;;
 		c) crit=${OPTARG}			;;
 		m) mode=${OPTARG}			;;
+		n) checkName=${OPTARG}		;;
+		C) classList=${OPTARG}		;;
 		f) filter=${OPTARG}			;;
 		F) neg_filter=${OPTARG}		;;
 		t) tout=${OPTARG}			;;
@@ -85,15 +90,18 @@ function filter_entity_byname {
 
 function filter_entity_byclass {
 
-	local filter=$1
+	local classLeaf=$1
+	local filter=$2
 	local idx
 	local class
-	local nameOID
 
-	outmsg="$checkName: "
+	# reset outElements to allow multiple calls of this function
+	outElements=()
+	dbg_msg "out elements: ${outElements[*]}"
+
 	for idx in "${elementList[@]}"
     do
-		classOID="${baseOID}.${id[class]}.$idx"
+		classOID="${baseOID}.$classLeaf.$idx"
 		class=${snmpData[$classOID]}
 		if [[ "$class" == "$filter" ]] ;then
 			dbg_msg "Adding $class to index $idx"
@@ -104,14 +112,15 @@ function filter_entity_byclass {
 
 function check_element_error_status {
 	# Requires "filter_entity" to run before
-	local oid=$1
+	local errorStatusOID=$1
 	local outPrefix=$2
 	local element
 	local eStatus
 	local eName
 	local loop_rcode
+	local loop_sstring
 
-	outmsg="$outPrefix "
+	outmsg+="$outPrefix "
 	for element in ${outElements[@]} ; do
 
 		# get element name
@@ -125,10 +134,17 @@ function check_element_error_status {
 		eName=${eName//\"/}
 		
 		# get error status
-		get_snmp $oid.$element
-		eStatus=$( map_hh3cEntityExtErrorStatus ${snmpData[$oid.$element]} )
+		get_snmp $errorStatusOID.$element
+		eStatus=$( map_hh3cEntityExtErrorStatus ${snmpData[$errorStatusOID.$element]} )
+		loop_rcode=$( rate_hh3cEntityExtErrorStatus ${snmpData[$errorStatusOID.$element]} )
+		loop_sstring=$( state_string $loop_rcode y )
+
+		# Output & set exit code
 		outmsg+="$eName: $eStatus; "
-		glob_rcode=$( set_globalstate $( rate_hh3cEntityExtErrorStatus ${snmpData[$oid.$element]} ))
+		details+="$loop_sstring $eName: $eStatus; "
+		details+="\n"
+
+		glob_rcode=$( set_globalstate $loop_rcode )
 	done
 }
 
@@ -136,50 +152,55 @@ function check_element_error_status {
 function map_hh3cEntityExtErrorStatus {
 	local int=$1
 
-	local -A error_map
-	error_map[1]='notSupported'
-	error_map[2]='normal'
-	error_map[3]='postFailure'
-	error_map[4]='entityAbsent'
-	error_map[11]='poeError'
-	error_map[21]='stackError'
-	error_map[22]='stackPortBlocked'
-	error_map[23]='stackPortFailed'
-	error_map[31]='sfpRecvError'
-	error_map[32]='sfpSendError'
-	error_map[33]='sfpBothError'
-	error_map[41]='fanError'
-	error_map[51]='psuError'
-	error_map[61]='rpsError'
-	error_map[71]='moduleFaulty'
-	error_map[81]='sensorError'
-	error_map[91]='hardwareFaulty'
+	local -A error_map=( \
+		[1]='notSupported' \
+		[2]='normal' \
+		[3]='postFailure' \
+		[4]='entityAbsent' \
+		[11]='poeError' \
+		[21]='stackError' \
+		[22]='stackPortBlocked' \
+		[23]='stackPortFailed' \
+		[31]='sfpRecvError' \
+		[32]='sfpSendError' \
+		[33]='sfpBothError' \
+		[41]='fanError' \
+		[51]='psuError' \
+		[61]='rpsError' \
+		[71]='moduleFaulty' \
+		[81]='sensorError' \
+		[91]='hardwareFaulty' \
+	)
 	echo ${error_map[$int]}
 }
 
 function rate_hh3cEntityExtErrorStatus {
 	local int=$1
 
-	local -A error_map
-	error_map[1]=0
-	error_map[2]=0
-	error_map[3]=2
-	error_map[4]=0
-	error_map[11]=2
-	error_map[21]=2
-	error_map[22]=2
-	error_map[23]=2
-	error_map[31]=2
-	error_map[32]=2
-	error_map[33]=2
-	error_map[41]=2
-	error_map[51]=2
-	error_map[61]=2
-	error_map[71]=2
-	error_map[81]=2
-	error_map[91]=2
+	local -A error_map=( [1]=0 [2]=0 [3]=2 [4]=0 [11]=2 [21]=2 [22]=2 [23]=2 \
+		[31]=2 [32]=2 [33]=2 [41]=2 [51]=2 [61]=2 [71]=2 [81]=2 [91]=2 )
 	echo ${error_map[$int]}
 }
+
+function map_className {
+	local int=$1
+
+	local -A class_map=( \
+	[2]='unknown' \
+	[3]='Chassis' \
+	[4]='Backpanel' \
+	[5]='Container' \
+	[6]='Power Supply' \
+	[7]='Fan' \
+	[8]='Sensor' \
+	[9]='Module' \
+	[10]='Port' \
+	[11]='Stack' \
+	)
+	echo "${class_map[$int]}"
+}
+	
+
 
 #
 # MAIN
@@ -194,25 +215,65 @@ tout=${tout:=20}
 
 check_snmp_args
 check_threshold_args
-#  entPhysicalTable  .1.3.6.1.2.1.47.1.1.1
-#  hh3cEntityExtStateTable  .1.3.6.1.4.1.25506.2.6.1.1.1
 
 case $mode in
 	fanHP)
+		# entPhysicalTable
 		baseOID='.1.3.6.1.2.1.47.1.1.1.1'
 		id[name]=7
-		id[class]=5
+		# id[class]=5
 		get_bulk_snmp
 		process_snmp_namedindex
-		#filter_entity_byname FAN
-		filter_entity_byclass 7
+
+		# class information is on leaf 5, fans have '7'
+		filter_entity_byclass 5 7
 
 		# Switch to hh3cEntityExtStateTable
 		extOID='.1.3.6.1.4.1.25506.2.6.1.1.1.1'
-		fanOID="${extOID}.19"
-		check_element_error_status $fanOID 'Fan Check:'
-	;;
+		errorStatusOID="${extOID}.19"
+		check_element_error_status $errorStatusOID 'Fans:'
+		;;
 	
+	psuHP)
+		# entPhysicalTable
+		baseOID='.1.3.6.1.2.1.47.1.1.1.1'
+		id[name]=7
+		get_bulk_snmp
+		process_snmp_namedindex
+
+		# class information is on leaf 5, PSUs have '6'
+		filter_entity_byclass 5 6
+
+		# Switch to hh3cEntityExtStateTable
+		extOID='.1.3.6.1.4.1.25506.2.6.1.1.1.1'
+		errorStatusOID="${extOID}.19"
+		check_element_error_status $errorStatusOID 'Power Supplies:'
+		;;
+
+	multi)
+		# for this kind of check, the user can name the whole
+		# thing using -n. Set a default here
+		: ${checkName:=Physical Check: }
+		outmsg="$checkName"
+
+		# read whole entPhysicalTable one time
+		baseOID='.1.3.6.1.2.1.47.1.1.1.1'
+		id[name]=7
+		get_bulk_snmp
+		process_snmp_namedindex
+
+		# Switch to hh3cEntityExtStateTable
+		extOID='.1.3.6.1.4.1.25506.2.6.1.1.1.1'
+		errorStatusOID="${extOID}.19"
+
+		classes=( 7 6 )
+		for class in ${classes[@]} ; do
+			# class information is on leaf 5
+			filter_entity_byclass 5 $class
+			className=$( map_className $class )
+			check_element_error_status $errorStatusOID "[$className] "
+		done
+		;;
 	*)
 		echo "(UNKNOWN): mode '-m $mode' not known" ; exit 3 ;;
 esac
