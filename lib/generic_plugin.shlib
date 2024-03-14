@@ -94,6 +94,15 @@ function state_string() {
 	echo "$string"
 }
 
+function trigger_exit {
+	echo -en "$( state_string $glob_rcode ) $outmsg"
+	if [ -n "$details" ] ; then echo -en "\n\n$details" ; fi
+	if [ -n "$perfdata" ] ; then echo -en "|$perfdata" ; fi
+	echo
+
+	exit $glob_rcode
+}
+
 # print a debug message to stderr
 function dbg_msg {
 	if [ "$debug" ] ; then
