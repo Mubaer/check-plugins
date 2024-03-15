@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-
-# This plugin checks various (hardware) entities of
-# ENTITY-MIB, HH3C-ENTITY-EXT-MIB
+#
+# This plugin checks various (hardware) entities found in:
+#
+# General:         ENTITY-MIB
+# Hewlett Packard: HH3C-ENTITY-EXT-MIB
+# Cisco:           CISCO-ENTITY-VENDORTYPE-OID-MIB
 #
 # Author: Xin Qu
+#
+# Version: 1.1 2024-03-20
+#	added support for cisco devices (fan, psu)
 #
 # Version: 1.0 2024-03-18
 #	modified check to a general check for HP entities, taking entity classes
@@ -69,6 +75,19 @@ source $libdir/convert_and_calc.shlib
 # Functions
 #######
 
+function read_entity_mib {
+	# for this kind of check, the user can name the whole
+	# thing using -n. Set a default here
+	: ${checkName:=Physical Check: }
+	outmsg="$checkName"
+
+	# read whole entPhysicalTable one time
+	baseOID='.1.3.6.1.2.1.47.1.1.1.1'
+	id[name]=7
+	get_bulk_snmp
+	process_snmp_namedindex
+}
+
 function filter_entity_byname {
 
 	local filter=$1
@@ -114,7 +133,7 @@ function filter_entity_byclass {
     done
 }
 
-function check_element_error_status {
+function check_hp_element_status {
 	# Requires "filter_entity" to run before
 	local errorStatusOID=$1
 	local outPrefix=$2
@@ -128,7 +147,6 @@ function check_element_error_status {
 	for element in ${outElements[@]} ; do
 
 		# get element name
-		eName1=${snmpData[$baseOID.${id[name]}.$element]}
 		if [ -z "${snmpUnit[$baseOID.${id[name]}.$element]}" ] ;then
 			eName="${snmpData[$baseOID.${id[name]}.$element]}"
 		else
@@ -225,8 +243,95 @@ function map_className {
 			echo "${!class_Rmap[@]}";;
 	esac
 }
-	
 
+function check_cisco_element_status {
+	local extOID='.1.3.6.1.4.1.9.9.117.1'  # cefcMIBObjects
+
+	local class=$1
+	local outPrefix=$2
+	local classLeaf=$( map_cisco_errorLeaf $class )
+	local fetchOID="$extOID.$classLeaf"
+	local numStatus
+	local descStatus
+	local loopRCODE
+
+	outmsg+="$outPrefix "
+	for element in ${outElements[@]} ; do
+		get_snmp $fetchOID.$element
+		numStatus=${snmpData[$fetchOID.$element]}
+		dbg_msg "numStatus: $numStatus"
+		descStatus=$( map_cisco_error_status $class $numStatus )
+		loopRCODE=$( rate_ciso_error $class $numStatus )
+		dbg_msg "looprcode: $loopRCODE"
+		glob_rcode=$( set_globalstate $loopRCODE )
+
+		# get element name
+		if [ -z "${snmpUnit[$baseOID.${id[name]}.$element]}" ] ;then
+			eName="${snmpData[$baseOID.${id[name]}.$element]}"
+		else
+			eName="${snmpData[$baseOID.${id[name]}.$element]} ${snmpUnit[$baseOID.${id[name]}.$element]}"
+		fi
+		# remove quotes
+		eName=${eName//\"/}
+
+		statusString=$( state_string $loopRCODE y )
+		outmsg+="$eName: $descStatus; "
+		details+="$statusString  $eName: $descStatus\n"
+	done
+}
+
+function map_cisco_errorLeaf {
+	local in=$1
+	local -A errorMap
+
+	errorMap=( [6]='1.2.1.2' [7]='4.1.1.1' )
+
+	echo "${errorMap[$in]}"
+}
+
+function map_cisco_error_status {
+	local class=$1
+	local numStat=$2
+	declare -A fanStatus
+	fanStatus=( [1]='unknown' [2]='up' [3]='down' [4]='waring' )
+	declare -A psuStatus
+	psuStatus=( \
+		[1]='offEnvOther' \
+		[2]='on' \
+		[3]='offAdmin' \
+		[4]='offDenied' \
+		[5]='offEnvPower' \
+		[6]='offEnvTemp' \
+		[7]='offEnvFan' \
+		[8]='failed' \
+		[9]='onButFanFail' \
+		[10]='offCooling' \
+		[11]='offConnectorRating' \
+		[12]='onButInlinePowerFail' \
+	)
+	case $class in
+		6)
+			echo ${psuStatus[$numStat]} ;;
+		7)
+			echo ${fanStatus[$numStat]} ;;
+	esac
+}
+
+function rate_ciso_error {
+	local class=$1
+	local int=$2
+
+	local -A psuMap=( [1]=1 [2]=0 [3]=1 [4]=1 [5]=1 \
+		[6]=1 [7]=1 [8]=2 [9]=2 [10]=1 [11]=1 [12]=2 )
+	local -A fanMap=( [1]=3 [2]=0 [3]=2 [4]=1 )
+
+	case $class in
+		6)
+			echo ${psuMap[$int]} ;;
+		7)
+			echo ${fanMap[$int]} ;;
+	esac
+}
 
 #
 # MAIN
@@ -269,26 +374,26 @@ check_threshold_args
 
 case $mode in
 	hp)
-		# for this kind of check, the user can name the whole
-		# thing using -n. Set a default here
-		: ${checkName:=Physical Check: }
-		outmsg="$checkName"
-
-		# read whole entPhysicalTable one time
-		baseOID='.1.3.6.1.2.1.47.1.1.1.1'
-		id[name]=7
-		get_bulk_snmp
-		process_snmp_namedindex
-
-		# Switch to hh3cEntityExtStateTable
+		read_entity_mib
+		# Proceed at hh3cEntityExtStateTable
 		extOID='.1.3.6.1.4.1.25506.2.6.1.1.1.1'
 		errorStatusOID="${extOID}.19"
 
-		classes=( 7 6 )
 		for class in ${classArray[@]} ; do
 			filter_entity_byclass 5 $class
 			className=$( map_className $class )
-			check_element_error_status $errorStatusOID "[$className] "
+			check_hp_element_status $errorStatusOID "[$className] "
+		done
+		;;
+	cisco)
+		read_entity_mib
+		# Proceed at  ciscoEntityFRUControlMIB
+		extOID=' .1.3.6.1.4.1.9.9.117.1'  # cefcMIBObjects
+
+		for class in ${classArray[@]} ; do
+			filter_entity_byclass 5 $class
+			className=$( map_className $class )
+			check_cisco_element_status $class "[$className] "
 		done
 		;;
 	*)
