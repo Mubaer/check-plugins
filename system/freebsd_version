@@ -1,4 +1,8 @@
 #!/bin/sh
+#
+# Check if the installed OS version matches the running kernel version
+#
+# 2021-11-07 - v1.0 by Xin Qu
 
 installed=`freebsd-version -k`
 running=`freebsd-version -r`

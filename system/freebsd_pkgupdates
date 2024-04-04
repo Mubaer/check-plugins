@@ -6,10 +6,11 @@
 #    - how many packages have vulnerabilities
 #    - number of packages 'locked'
 #
-# IMPORTANT: This check only works if 'pkg update' is run regularly.
+# IMPORTANT: This check only works if 'pkg update' is run periodically.
 # Because this requires root permissions, this check is not doing this
-# automatically. Nevertheless, it checks if 'pkg update' has not run
-# for <db-age> days and warns if the pkg-db is too old.
+# automatically. To prevent problems deriving from not running 'pkg update'
+# periodically, it checks if 'pkg update' has not run for <db-age> days and
+# warns if the pkg-db is too old.
 #
 # Parameters:
 #    <warn> <crit>: Return warning / critical if there are at least
@@ -20,7 +21,12 @@
 #       Example: $ freebsd_pkgupdates 10 30 3
 #                $ freebsd_pkgupdates    # (use defaults)
 #
+# Changelog
+#
+# 2022-02-01 - v1.0 by Xin Qu
+#
 
+# Set defaults
 pkg_maxw=${1:-10}
 pkg_maxc=${2:-30}
 age=${3:-4}

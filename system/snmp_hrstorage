@@ -2,7 +2,9 @@
 
 # This plugin inspects the hrStorage MIB. Although it was written for checking
 # a "Sophos UTM", it can be used universally. The memory calculation may not
-# be what you expect for other systems.
+# be what you expect for systems other than Sophos UTM.
+#
+# 2021-11-07 - v1.0 by Xin Qu
 
 # Define Vars
 declare -A snmpData

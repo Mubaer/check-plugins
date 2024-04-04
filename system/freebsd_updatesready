@@ -1,4 +1,8 @@
 #!/bin/sh
+# This script is meant to be used in combination with 'passive_bsdupdates'
+# Run this script from cron once a day as root
+#
+# 2022-04-21 - v1.0 by Xin Qu
 
 result=3
 

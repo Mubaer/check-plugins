@@ -1,8 +1,13 @@
 #!/bin/sh
+#
+# This check only works in combination with 'freebsd_updatesready', what
+# does the 'active' part as root. 'freebsd_updatesready' creates the file,
+# which is then interpreted by this check script.
+# 
+# 2022-04-21 - v1.0 by Xin Qu
 
 crf=/var/tmp/chk_psv_bsdupdates
 maxage=7
-
 
 if test `find $crf -mtime -$maxage 2>/dev/null`  ; then
     if test `grep OK $crf` ; then

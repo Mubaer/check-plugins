@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 #
 # Collects network interface statistics using 'netstat' on FreeBSD. Requires 'jq'.
+# Useful in combination with a grafana-graph that computes the deltas
 # 
+# 2021-01-07 - v1.0 by Xin Qu
 
 #
 # Process input
@@ -29,9 +31,9 @@ iface_addr=${iface_part[1]}
 
 # Select default filter (any ip) or filter by address
 if [ -z "$iface_addr" ]  ; then 
-	iface_filter='test("Link")|not' 
+	iface_filter='select( .network | contains("Link")|not )' 
 else
-	iface_filter="test(\"$iface_addr\")"
+	iface_filter="select( .address | contains(\"$iface_addr\"))"
 fi
 
 #
@@ -39,7 +41,7 @@ fi
 #
 script_name='.statistics.interface[] | select ( .network | test("Link") ) | .name '
 script_ll_address='.statistics.interface[] | select ( .network | test("Link") ) | .address '
-script_il_address=".statistics.interface[] | select ( .address | $iface_filter ) | .address "
+script_il_address=".statistics.interface[] | $iface_filter | .address "
 
 script_linklayer='.statistics.interface[] | select ( .network | test("Link") ) |
    "eth_recvd-pks=\(."received-packets");
@@ -51,7 +53,7 @@ script_linklayer='.statistics.interface[] | select ( .network | test("Link") ) |
     eth_dropped-pks=\(."dropped-packets");
     eth_colls=\(."collisions"); "
     '
-script_iplayer=".statistics.interface[] | select ( .address | $iface_filter ) |
+script_iplayer=".statistics.interface[] | $iface_filter |
    \"ip_recvd-pks=\(.\"received-packets\");
     ip_recvd-bytes=\(.\"received-bytes\");
     ip_sent-pks=\(.\"sent-packets\");
