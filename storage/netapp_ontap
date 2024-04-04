@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+#
+# Check Netapp ONTAP via API
+# 
+# Author: Xin Qu <xinqu@v32bis.cc> pgp: 0x8D677421
+#
+# Version 0.1
+#   first experimental version
+#
+import os, sys
+import requests
+requests.urllib3.disable_warnings()
+import argparse
+
+# local libs
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+#from lib.jsonapi import *
+from lib.generic_plugin import *
+
+import pprint
+pp=pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
+
+#from datetime import *
+#from datetime import datetime
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # 
+# MAIN
+# # # # # # # # # # # # # # # # # # # # # # # # # 
+
+# parse command line parameters
+
+cli = argparse.ArgumentParser \
+    (description='Check Sophos Cloud Services for Endpoint-Status or Alerts')
+
+cli.add_argument('-H', help='Hostname or IP address', required = True)
+cli.add_argument('--user', help='API username token', required =True)
+cli.add_argument('--password', help='API password', required =True)
+cli.add_argument('--port', help='tcp port to connect to (default 443)')
+cli.add_argument('--mode', help='select check mode', required = True,
+        choices=['sysinfo', 'hardware', 'license', 'cpu', 'mem'] )
+cli.add_argument('--warn', help='warning theshold', type=int)
+cli.add_argument('--crit', help='critical theshold', type=int)
+args = cli.parse_args()
+#pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
+
+# init vars
+rcode=0
+out_text=''
+detail=''
+perfdata=''
+
+mode=args.mode
+warn=args.warn
+crit=args.crit
+auth=(args.user, args.password)
+# /init vars
+
+ 
+def sysinfo( host, token ):
+    msg=''
+    detail=''
+
+    url="https://{}/api/cluster".format( host )
+    resp = requests.get(url, auth=token, verify=False)
+    jdata = resp.json()
+
+    # Version
+    jver = jdata.get('version')
+    version='.'.join( [ str(jver['generation']), str(jver['major']), str(jver['minor']) ] )
+    # Strip date from full version string
+    full_version = jver['full'].partition(':')[0]
+
+    msg += "{} @ {} | Version: '{}'".format( jdata.get('name'), jdata.get('location'), full_version )
+    detail += "Cluster Name: {}\n".format( jdata.get('name') )
+    detail += "Location:     {}\n".format( jdata.get('location') )
+
+    #pp.pprint( jdata )
+    return [ msg, detail, 'version='+version ]
+
+def hardware( host, token ):
+    msg='Hardware Health'; detail=''
+
+    # Read chassis
+    url="https://{}/api/cluster/chassis".format( host )
+    resp = requests.get(url, auth=token, verify=False)
+    jdata = resp.json()
+    #pp.pprint(jdata.get('records'))
+    for chassis in  jdata.get('records'):
+        chID = chassis.get('id')
+        chURL="https://{}/api/cluster/chassis/{}?fields=frus,state".format( host, chID )
+        chResp = requests.get(chURL, auth=token, verify=False)
+        chData = chResp.json()
+
+        detail += 'Chassis: ' + chID + ', Status: [{}]'.format(chData.get('state')) + "\n"
+
+        detail += "\tField replaceable units:\n"
+        for fru in chData.get('frus'):
+            tmpRC=0
+            if fru['state'] != 'ok':
+                tmpRC=2
+
+            detail+=("\t{}  {}  {}".format( rcstring(tmpRC), fru['type'], fru['id'])+ "\n")
+    detail += "\n"
+
+    # Read nodes
+    url="https://{}/api/cluster/nodes".format( host )
+    resp = requests.get(url, auth=token, verify=False)
+    jdata = resp.json()
+    for node in jdata.get('records'):
+        nodeURL="https://{}/api/cluster/nodes/{}".format( host, node['uuid'] )
+        nodeResp = requests.get(nodeURL, auth=token, verify=False)
+        nodeData = nodeResp.json()
+
+        detail += 'Node: ' + node['name'] + "\n"
+
+        # Battery
+        bat = nodeData['nvram']['battery_state']
+        tmpRC=0
+        if bat != 'battery_ok':
+            tmpRC=2
+        detail += "\t{}: NVRAM-Battery -- {}\n".format( rcstring(tmpRC), bat )
+
+        for item in [ 'failed_fan', 'failed_power_supply' ]:
+            tmpRC=0
+            numFailed = nodeData['controller'][item]['count']
+
+            if numFailed > 0:
+                tmpRC = 2
+
+            detail += "\t{}: #{} -- {}\n".format( 
+                rcstring(tmpRC),
+                numFailed,
+                nodeData['controller'][item]['message']['message'] )
+
+        #pp.pprint(nodeData)
+    detail += "\n"
+    detail += "Shelf: <TODO>\n"
+
+
+    return [ msg, detail ]
+
+
+# User non-standard port number?
+if args.port:
+    hostname = args.H + ':' + args.port
+else:
+    hostname = args.H
+
+# Select check mode
+if mode=='sysinfo':
+    out_text, detail, perfdata = sysinfo(hostname, auth)
+elif mode=='hardware':
+    out_text, detail = hardware(hostname, auth)
+elif mode=='mem':
+    (out_text, rcode, perfdata)=resource(hostname, args.token, 'mem', warn, crit)
+elif mode=='license':
+    (out_text,rcode)=license(hostname, args.token, warn, crit )
+else:
+    rcode=3
+    out_text='Option "--mode" required'
+
+
+#Finally, print check output and exit with rcode
+print(  plugin_output( rcode, out_text, detail, perfdata ) )
+
+sys.exit(rcode)
+
+
