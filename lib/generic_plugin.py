@@ -1,18 +1,27 @@
 """common functions for check-plugins"""
 
-def rcstring( rc, b='(' ):
+def rcstring( rc, b='(', lineup=0 ):
     brace = {
             '(': [ '(', ')' ],
             '[': [ '[', ']' ],
             '{': [ '{', '}' ]
             }
 
-    rcstring = {
-        0: f"{brace[b][0]}OK{brace[b][1]}",
-        1: f"{brace[b][0]}WARNING{brace[b][1]}",
-        2: f"{brace[b][0]}CRITICAL{brace[b][1]}",
-        3: f"{brace[b][0]}UNKNOWN{brace[b][1]}"
-        }
+    if lineup:
+        rcstring = {
+            0: f"{brace[b][0]}OK{brace[b][1]}      ",
+            1: f"{brace[b][0]}WARNING{brace[b][1]} ",
+            2: f"{brace[b][0]}CRITICAL{brace[b][1]}",
+            3: f"{brace[b][0]}UNKNOWN{brace[b][1]} "
+            }
+    else:
+        rcstring = {
+            0: f"{brace[b][0]}OK{brace[b][1]}",
+            1: f"{brace[b][0]}WARNING{brace[b][1]}",
+            2: f"{brace[b][0]}CRITICAL{brace[b][1]}",
+            3: f"{brace[b][0]}UNKNOWN{brace[b][1]}"
+            }
+
     return(rcstring[rc])
 
 
@@ -43,4 +52,12 @@ def update_rc( new, old ):
         return( new )
     else:
         return( old )
+
+def plugin_output( rc, msg, detail, perfdata ):
+    outstr = ' '.join( [ rcstring(rc), msg ] )
+    if detail:
+        outstr+="\n\n" + detail
+    if perfdata:
+        outstr+='|' + perfdata
+    return outstr
 
