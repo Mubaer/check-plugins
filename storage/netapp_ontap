@@ -4,6 +4,9 @@
 # 
 # Author: Xin Qu <xinqu@v32bis.cc> pgp: 0x8D677421
 #
+# Version 1.0 2024-04-10
+#   1st release
+#
 # Version 0.1
 #   first experimental version
 #
@@ -41,6 +44,7 @@ cli.add_argument('--mode', help='select check mode', required = True,
         choices=['sysinfo', 'hardware', 'license', 'cpu', 'mem'] )
 cli.add_argument('--warn', help='warning theshold', type=int)
 cli.add_argument('--crit', help='critical theshold', type=int)
+cli.add_argument('-d', help='enable debugging messages', action='store_true', dest='DEBUG')
 args = cli.parse_args()
 #pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
 
@@ -53,6 +57,7 @@ perfdata=''
 mode=args.mode
 warn=args.warn
 crit=args.crit
+DEBUG=args.DEBUG
 auth=(args.user, args.password)
 # /init vars
 
@@ -79,66 +84,198 @@ def sysinfo( host, token ):
     return [ msg, detail, 'version='+version ]
 
 def hardware( host, token ):
+    rcode=0
     msg='Hardware Health'; detail=''
 
-    # Read chassis
+    #
+    # Chassis
+    #
     url="https://{}/api/cluster/chassis".format( host )
     resp = requests.get(url, auth=token, verify=False)
-    jdata = resp.json()
-    #pp.pprint(jdata.get('records'))
-    for chassis in  jdata.get('records'):
+    chassis_data = resp.json()
+    #if DEBUG: pp.pprint(chassis_data.get('records'))
+
+    for chassis in  chassis_data.get('records'):
         chID = chassis.get('id')
-        chURL="https://{}/api/cluster/chassis/{}?fields=frus,state".format( host, chID )
+        chURL="https://{}/api/cluster/chassis/{}?fields=frus,state,shelves".format( host, chID )
         chResp = requests.get(chURL, auth=token, verify=False)
         chData = chResp.json()
 
-        detail += 'Chassis: ' + chID + ', Status: [{}]'.format(chData.get('state')) + "\n"
+        rc_chassis=0
+        if chData.get('state') != 'ok':
+            rc_chassis=2
+
+        detail += '{} Chassis: {}\n'.format(rcstring( rc_chassis ), chID )
 
         detail += "\tField replaceable units:\n"
+        detail += "\t------------------------\n"
+        errCount=0
         for fru in chData.get('frus'):
             tmpRC=0
             if fru['state'] != 'ok':
+
                 tmpRC=2
+                # Update global return code
+                rcode = update_rc( tmpRC, rcode)
+                errCount += 1
 
-            detail+=("\t{}  {}  {}".format( rcstring(tmpRC), fru['type'], fru['id'])+ "\n")
-    detail += "\n"
+            detail+=("\t{}: {} {}".format( rcstring(tmpRC), fru['type'], fru['id'])+ "\n")
 
-    # Read nodes
-    url="https://{}/api/cluster/nodes".format( host )
-    resp = requests.get(url, auth=token, verify=False)
-    jdata = resp.json()
-    for node in jdata.get('records'):
-        nodeURL="https://{}/api/cluster/nodes/{}".format( host, node['uuid'] )
-        nodeResp = requests.get(nodeURL, auth=token, verify=False)
-        nodeData = nodeResp.json()
+        if errCount > 0:
+            msg += " | {} Chassis FRUs failed".format( errCount )
 
-        detail += 'Node: ' + node['name'] + "\n"
+        detail += "\n"
 
-        # Battery
-        bat = nodeData['nvram']['battery_state']
-        tmpRC=0
-        if bat != 'battery_ok':
-            tmpRC=2
-        detail += "\t{}: NVRAM-Battery -- {}\n".format( rcstring(tmpRC), bat )
+        #
+        # Nodes
+        #
+        url="https://{}/api/cluster/nodes".format( host )
+        resp = requests.get(url, auth=token, verify=False)
+        nodes_data = resp.json()
 
-        for item in [ 'failed_fan', 'failed_power_supply' ]:
+        indent='\t'
+        node_failed = { 
+            'bat' : 0,
+            'failed_fan' : 0,
+            'failed_power_supply' : 0
+        }
+
+        for node in nodes_data.get('records'):
+            nodeURL="https://{}/api/cluster/nodes/{}".format( host, node['uuid'] )
+            nodeResp = requests.get(nodeURL, auth=token, verify=False)
+            nodeData = nodeResp.json()
+
+            rc_node=0
+            if nodeData.get('state') != 'up':
+                rc_node=2
+                msg +=' | {} != UP'.format( nodeData.get('name') )
+
+            detail += '{}: Node: "{}", State: {}\n'.format( rcstring( rc_node ),  node['name'], nodeData.get('state') )
+
+            # Battery
+            bat = nodeData['nvram']['battery_state']
+
             tmpRC=0
-            numFailed = nodeData['controller'][item]['count']
+            if bat != 'battery_ok':
+                tmpRC=2
+                # Update global return code
+                rcode = update_rc( tmpRC, rcode)
+                node_failed['bat'] += 1
 
-            if numFailed > 0:
-                tmpRC = 2
+            detail += "{}{}: NVRAM-Battery -- {}\n".format( indent, rcstring(tmpRC), bat )
 
-            detail += "\t{}: #{} -- {}\n".format( 
-                rcstring(tmpRC),
-                numFailed,
-                nodeData['controller'][item]['message']['message'] )
+            for item in [ 'failed_fan', 'failed_power_supply' ]:
+                tmpRC=0
+                numFailed = nodeData['controller'][item]['count']
 
-        #pp.pprint(nodeData)
+                if numFailed > 0:
+                    tmpRC = 2
+                    # Update global return code
+                    rcode = update_rc( tmpRC, rcode)
+                    node_failed[ item ] += numFailed
+
+                detail += "{}{}: #{} -- {}\n".format( indent,
+                    rcstring(tmpRC),
+                    numFailed,
+                    nodeData['controller'][item]['message']['message'] )
+
+            detail += "\n"
+            #if DEBUG: pp.pprint(nodeData)
+
+        # Summarize Nodes
+        if node_failed['bat']:                   msg += ' | {} BATs failed'.format( failed['bat'])
+        if node_failed['failed_fan']:            msg += ' | {} Fans failed'.format( failed['failed_fan'])
+        if node_failed['failed_power_supply']:   msg += ' | {} PSUs failed'.format( failed['failed_power_supply'])
+
+
+
+        #
+        # Shelves
+        #
+        #num_shelves = len( chData.get('shelves') )
+
+        #if DEBUG: 
+        #    print('-------------------- shelves ----------------------------')
+        #    pp.pprint(chData.get('shelves'))
+        #    print('-------------------- /shelves ----------------------------')
+        shelv_failed = {
+                'fan' : 0,
+                'fru' : 0,
+                'bay' : 0
+                }
+
+        for shelv in chData.get('shelves'):
+            shelvURL="https://{}/api/storage/shelves/{}".format( host, shelv['uid'] )
+            shelvResp = requests.get(shelvURL, auth=token, verify=False)
+            shelvData = shelvResp.json()
+
+            #if DEBUG: detail += 'number of shelves: {}'.format( num_shelves )
+            rc_shelv=0
+            if shelvData.get('state') != 'ok':
+                rc_shelv=2
+                msg+=' | Shelv "{}" failed'.format(shelvData.get('name'))
+
+            detail += '{}: Shelv: {} / {} / {} / SN: {}\n'.format( rcstring( rc_shelv ),
+                                 shelvData['name'] , shelvData['model'], 
+                                 shelvData['module_type'], shelvData['serial_number'] )
+
+            # Shelv Field replacable units
+            detail += "\tField replaceable units:\n"
+            detail += "\t------------------------\n"
+
+            for fru in shelvData.get('frus'):
+                tmpRC=0
+                if fru['state'] != 'ok':
+                    tmpRC=2
+                    # Update global return code
+                    rcode = update_rc( tmpRC, rcode)
+                    shelv_failed['fru'] += 1
+
+                detail+=("{}{}: {}  {}".format( indent, rcstring(tmpRC), fru['type'], fru['id'])+ "\n")
+
+            # Shelv Fans
+            detail += "\n\tFans:\n"
+            detail += "\t-----\n"
+            for fan in shelvData.get('fans'):
+                tmpRC=0
+
+                if fan['state'] != 'ok':
+                    tmpRC=2
+                    # Update global return code
+                    rcode = update_rc( tmpRC, rcode)
+                    shelv_failed['fan'] += 1
+
+                detail+=("{}{}: id:{}, {}rpm, {}".format( indent, rcstring(tmpRC), fan['id'], fan['rpm'], fan['location'])+ "\n")
+
+            # Shelv Disk Bays
+            detail += "\n\tBays:\n"
+            detail += "\t-----\n"
+            detail += "\t        \t  Type  \tID\n"
+
+            for bay in shelvData.get('bays'):
+                tmpRC=0
+
+                if bay['state'] != 'ok':
+                    tmpRC=2
+                    # Update global return code
+                    rcode = update_rc( tmpRC, rcode)
+                    shelv_failed['bay'] += 1
+
+                detail+=("{}{}:\t{}\t{}".format( indent, rcstring(tmpRC,lineup=1), bay['type'], bay['id'])+ "\n")
+
+            if DEBUG: 
+                print('-------------------- shelv ----------------------------')
+                pp.pprint(shelvData)
+                print('-------------------- /shelv ----------------------------')
+        # Sumarize Shelves
+        if shelv_failed['fan']: msg += ' | {} Fans failed'.format( shelv_failed['fan'] )
+        if shelv_failed['fru']: msg += ' | {} FRUs failed'.format( shelv_failed['fru'] )
+        if shelv_failed['bay']: msg += ' | {} Bays failed'.format( shelv_failed['bay'] )
+
     detail += "\n"
-    detail += "Shelf: <TODO>\n"
 
 
-    return [ msg, detail ]
+    return [ msg, detail, rcode ]
 
 
 # User non-standard port number?
@@ -151,7 +288,7 @@ else:
 if mode=='sysinfo':
     out_text, detail, perfdata = sysinfo(hostname, auth)
 elif mode=='hardware':
-    out_text, detail = hardware(hostname, auth)
+    out_text, detail, rcode = hardware(hostname, auth)
 elif mode=='mem':
     (out_text, rcode, perfdata)=resource(hostname, args.token, 'mem', warn, crit)
 elif mode=='license':
