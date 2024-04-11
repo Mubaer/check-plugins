@@ -14,6 +14,7 @@ import os, sys
 import requests
 requests.urllib3.disable_warnings()
 import argparse
+#from packaging.version import Version
 
 # local libs
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
@@ -215,9 +216,10 @@ def hardware( host, token ):
                 rc_shelv=2
                 msg+=' | Shelv "{}" failed'.format(shelvData.get('name'))
 
-            detail += '{}: Shelv: {} / {} / {} / SN: {}\n'.format( rcstring( rc_shelv ),
+            detail += '{}: Shelv: {} / {} / {} / SN: {} / {} disks\n'.format( rcstring( rc_shelv ),
                                  shelvData['name'] , shelvData['model'], 
-                                 shelvData['module_type'], shelvData['serial_number'] )
+                                 shelvData['module_type'], shelvData['serial_number'],
+                                shelvData['disk_count'] )
 
             # Shelv Field replacable units
             detail += "\tField replaceable units:\n"
@@ -250,7 +252,7 @@ def hardware( host, token ):
             # Shelv Disk Bays
             detail += "\n\tBays:\n"
             detail += "\t-----\n"
-            detail += "\t        \t  Type  \tID\n"
+            detail += "\tState    \t  Type  \tID\thas disk?\n"
 
             for bay in shelvData.get('bays'):
                 tmpRC=0
@@ -261,7 +263,12 @@ def hardware( host, token ):
                     rcode = update_rc( tmpRC, rcode)
                     shelv_failed['bay'] += 1
 
-                detail+=("{}{}:\t{}\t{}".format( indent, rcstring(tmpRC,lineup=1), bay['type'], bay['id'])+ "\n")
+                if bay['has_disk'] == True:
+                    has_disk = '[ Y ]'
+                else:
+                    has_disk = '[ - ]'
+
+                detail+="{}{}\t{}\t{}\t{}\n".format( indent, rcstring(tmpRC,lineup=1), bay['type'], bay['id'], has_disk )
 
             if DEBUG: 
                 print('-------------------- shelv ----------------------------')
@@ -272,10 +279,65 @@ def hardware( host, token ):
         if shelv_failed['fru']: msg += ' | {} FRUs failed'.format( shelv_failed['fru'] )
         if shelv_failed['bay']: msg += ' | {} Bays failed'.format( shelv_failed['bay'] )
 
-    detail += "\n"
+    detail += '\n'
+
+    #
+    # Disks
+    #
+    (disk_msg, disk_detail, disk_rcode) = check_disks( host, token )
+
+    msg     += disk_msg
+    detail  += disk_detail
+    rcode    = update_rc( disk_rcode, rcode )
 
 
     return [ msg, detail, rcode ]
+
+
+#
+# Disks
+#
+def check_disks (host, token):
+    msg=''
+    detail  = 'Disks\n'
+    detail += '-----\n'
+    detail += '\tState    \tName\tPool\tCType\tbay\n'
+    diskRC = 0
+
+    url="https://{}/api/storage/disks".format( host )
+    resp = requests.get(url, auth=token, verify=False)
+    disks = resp.json()
+    for disk in sorted( disks.get('records'), key=lambda x: tuple(map(int, x['name'].split('.')) ) ):
+        tmpRC=0
+        diskHref=disk['_links']['self']['href']
+        diskURL="https://{}{}".format( host, diskHref )
+        diskResp = requests.get(diskURL, auth=token, verify=False)
+        diskData = diskResp.json()
+
+        linearray = []
+        for key in ( 'name', 'pool', 'container_type', 'bay' ):
+            linearray.append( str( diskData.get( key ) ))
+
+        #TESTING
+        #if diskData.get('name') == '1.0.4': diskData['container_type'] = 'broken'
+        #/TESTING
+        if diskData.get('container_type') in [ 'broken', 'unassigned' ]:
+            tmpRC = 2
+            msg+=' | container type of disk {}={}'.format( 
+                              diskData.get('name'), diskData.get('container_type' ) )
+            if tmpRC > diskRC:
+                diskRC = tmpRC
+
+
+
+        detail += '\t'.join( [ '', rcstring( tmpRC, lineup=1) ] +  linearray ) + '\n'
+
+        if DEBUG:
+            print('-------------------- disk ----------------------------')
+            pp.pprint( diskData )
+            print('-------------------- disk ----------------------------')
+
+    return [ msg, detail, diskRC ]
 
 
 # User non-standard port number?
