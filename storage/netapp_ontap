@@ -4,6 +4,9 @@
 # 
 # Author: Xin Qu <xinqu@v32bis.cc> pgp: 0x8D677421
 #
+# Version 1.1 2024-04-12
+#   sysinfo: move version from perfdata to plugin output
+#
 # Version 1.0 2024-04-10
 #   1st release
 #
@@ -80,9 +83,10 @@ def sysinfo( host, token ):
     msg += "{} @ {} | Version: '{}'".format( jdata.get('name'), jdata.get('location'), full_version )
     detail += "Cluster Name: {}\n".format( jdata.get('name') )
     detail += "Location:     {}\n".format( jdata.get('location') )
+    detail += "Version:      {}\n".format( version )
 
     #pp.pprint( jdata )
-    return [ msg, detail, 'version='+version ]
+    return [ msg, detail ]
 
 def hardware( host, token ):
     rcode=0
@@ -348,7 +352,7 @@ else:
 
 # Select check mode
 if mode=='sysinfo':
-    out_text, detail, perfdata = sysinfo(hostname, auth)
+    out_text, detail = sysinfo(hostname, auth)
 elif mode=='hardware':
     out_text, detail, rcode = hardware(hostname, auth)
 elif mode=='mem':
