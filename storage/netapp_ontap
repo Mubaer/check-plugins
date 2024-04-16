@@ -4,12 +4,12 @@
 # 
 # Author: Xin Qu <xinqu@v32bis.cc> pgp: 0x8D677421
 #
+# Version 1.2.1 2024-04-17
+#   Added perfdata to volumes, aggregates, LUNs
 # Version 1.2 2024-04-17
-#   New features: Volumes, Aggregates, LUNs
-#
+#   New features: volumes, aggregates, LUNs
 # Version 1.1 2024-04-12
 #   sysinfo: move version from perfdata to plugin output
-#
 # Version 1.0 2024-04-10
 #   1st release
 #
@@ -357,8 +357,9 @@ def check_disks (host, token):
 # Aggregates
 #
 def check_aggregates (host, token, warnDistance, warn, crit):
-    msg    = ''
-    detail = ''
+    msg      = ''
+    detail   = ''
+    perfdata = ''
     aggRC  = 0
     if not warnDistance: warnDistance=5
 
@@ -376,7 +377,7 @@ def check_aggregates (host, token, warnDistance, warn, crit):
 
         used = aggData.get('space').get('block_storage').get('used')
         size = aggData.get('space').get('block_storage').get('size')
-        threshold = aggData.get('space').get('block_storage').get('full_threshold_percent')
+        critThreshold = aggData.get('space').get('block_storage').get('full_threshold_percent')
         state = aggData.get('state')
         name = aggData.get('name')
 
@@ -397,33 +398,35 @@ def check_aggregates (host, token, warnDistance, warn, crit):
                 aggRC=tmpRC
 
         # Critical condition
-        if percent_used >= threshold:
+        if percent_used >= critThreshold:
             tmpRC=2
             msg += ' | Usage above crit {}(used {}%)'.format(name, percent_used)
             if tmpRC > aggRC:
                 aggRC=tmpRC
         # Warning condition 
-        elif percent_used >= (threshold - warnDistance):
+        elif percent_used >= (critThreshold - warnDistance):
             tmpRC=1
             msg += ' | Usage above warn {}(used {}%)'.format(name, percent_used)
             if tmpRC > aggRC:
                 aggRC=tmpRC
 
-        detail += '{} {}; {}; used: {:.1f}%; theshold: {}%\n'.format(rcstring( tmpRC, lineup=1 ), name, state, percent_used, threshold)
+        detail += '{} {}; {}; used: {:.1f}%; thresholds: warn {}% / crit {}%\n'.format(rcstring( tmpRC, lineup=1 ), name, state, percent_used, (critThreshold - warnDistance ), critThreshold)
+        perfdata += '{}={:.1f}%;{};{} '.format(name, percent_used, (critThreshold - warnDistance), critThreshold)
 
         if DEBUG:
             print('-------------------- Aggreagate -----------------------')
             pp.pprint( aggData )
             print('-------------------- /Aggreagate ----------------------')
 
-    return [ msg, detail, aggRC ]
+    return [ msg, detail, aggRC, perfdata ]
 
 #
 # Volumes
 #
 def check_volumes (host, token, warn, crit):
-    msg    = ''
-    detail = ''
+    msg      = ''
+    detail   = ''
+    perfdata = ''
     volRC = 0
 
     url="https://{}/api/storage/volumes".format( host )
@@ -470,20 +473,22 @@ def check_volumes (host, token, warn, crit):
             msg += ' | Usage above warn {}(used {:.1f}%)'.format(name, percent_used)
 
         detail += '{} {}; {}; used: {:.1f}%; thesholds: warn {}% / crit {}%\n'.format(rcstring( tmpRC, lineup=1 ), name, state, percent_used, warnThreshold, critThreshold)
+        perfdata += '{}={}%;{};{} '.format(name, percent_used, warnThreshold, critThreshold)
 
         if DEBUG:
             print('-------------------- Volume -----------------------')
             pp.pprint( volData )
             print('-------------------- /Volume ----------------------')
 
-    return [ msg, detail, volRC ]
+    return [ msg, detail, volRC, perfdata ]
 
 #
 # LUNs
 #
 def check_luns (host, token, warn, crit):
-    msg    = ''
-    detail = ''
+    msg      = ''
+    detail   = ''
+    perfdata = ''
     lunRC = 0
 
     crit = crit or 95
@@ -529,13 +534,14 @@ def check_luns (host, token, warn, crit):
             msg += ' | Usage above warn {}(used {:.1f}%)'.format(name, percent_used)
 
         detail += '{} {}; {}; used: {:.1f}%; thesholds: warn {}% / crit {}%\n'.format(rcstring( tmpRC, lineup=1 ), name, state, percent_used, warn, crit)
+        perfdata += '{}={:.1f}%;{};{} '.format(name, percent_used, warn, crit)
 
         if DEBUG:
             print('-------------------- LUN -----------------------')
             pp.pprint( lunData )
             print('-------------------- /LUN ----------------------')
 
-    return [ msg, detail, lunRC ]
+    return [ msg, detail, lunRC, perfdata ]
 
 # User non-standard port number?
 if args.port:
@@ -549,11 +555,11 @@ if mode=='sysinfo':
 elif mode=='hardware':
     out_text, detail, rcode = hardware(hostname, auth)
 elif mode=='agg':
-    out_text, detail, rcode = check_aggregates(hostname, auth, warnDistance, warn, crit)
+    out_text, detail, rcode, perfdata = check_aggregates(hostname, auth, warnDistance, warn, crit)
 elif mode=='vol':
-    out_text, detail, rcode = check_volumes(hostname, auth, warn, crit)
+    out_text, detail, rcode, perfdata = check_volumes(hostname, auth, warn, crit)
 elif mode=='lun':
-    out_text, detail, rcode = check_luns(hostname, auth, warn, crit)
+    out_text, detail, rcode, perfdata = check_luns(hostname, auth, warn, crit)
 else:
     rcode=3
     out_text='Option "--mode" required'
