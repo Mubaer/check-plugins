@@ -6,6 +6,7 @@
 #
 # Version 1.2.1 2024-04-17
 #   Added perfdata to volumes, aggregates, LUNs
+#   Removed ':' from 1st output line
 # Version 1.2 2024-04-17
 #   New features: volumes, aggregates, LUNs
 # Version 1.1 2024-04-12
@@ -366,7 +367,7 @@ def check_aggregates (host, token, warnDistance, warn, crit):
     url="https://{}/api/storage/aggregates".format( host )
     resp = requests.get(url, auth=token, verify=False)
     aggs = resp.json()
-    msg += ': Checked {} Aggregates'.format( len(aggs.get('records')) )
+    msg += ' Checked {} Aggregates'.format( len(aggs.get('records')) )
     #for agg in sorted( aggs.get('records'), key=lambda x: aggs.get('name') ):
     for agg in  aggs.get('records'):
         tmpRC=0
@@ -432,7 +433,7 @@ def check_volumes (host, token, warn, crit):
     url="https://{}/api/storage/volumes".format( host )
     resp = requests.get(url, auth=token, verify=False)
     vols = resp.json()
-    msg += ': Checked {} Volumes'.format( len(vols.get('records')) )
+    msg += ' Checked {} Volumes'.format( len(vols.get('records')) )
 
     for vol in sorted( vols.get('records'), key=lambda x: x.get('name') ):
         tmpRC=0
@@ -497,7 +498,7 @@ def check_luns (host, token, warn, crit):
     url="https://{}/api/storage/luns".format( host )
     resp = requests.get(url, auth=token, verify=False)
     luns = resp.json()
-    msg += ': Checked {} LUNs'.format( len(luns.get('records')) )
+    msg += ' Checked {} LUNs'.format( len(luns.get('records')) )
     for lun in sorted( luns.get('records'), key=lambda x: x.get('name') ):
         tmpRC=0
         lunHref=lun['_links']['self']['href']
