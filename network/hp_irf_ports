@@ -4,11 +4,13 @@
 #
 # Author: msander
 #
-# Version: 0.1  2023-10-11
-#   first test version
+# Version: 1.1	2024-04-29
+#	bugfix: message depends on global state
+# Version: 1.0	2024-02-21
+#	first prod version
+# Version: 0.1	2023-10-11
+#	first test version
 #
-# Version: 1.0  2024-02-21
-#   first prod version
 #
 
 # Define Vars
@@ -22,20 +24,20 @@ glob_rcode=0
 
 OPTERR=1
 while getopts "H:C:u:x:X:a:A:l:w:c:m:f:F:t:Bhd" OPTION ; do
-    case "${OPTION}" in
-        H) hostname=${OPTARG}       ;;
-        C) community="-c ${OPTARG}" ;;
-        u) authuser="-u ${OPTARG}"  ;;
-        a) authproto="-a ${OPTARG}" ;;
-        A) authpass="-A ${OPTARG}"  ;;
-        x) privproto="-x ${OPTARG}" ;;
-        X) privpass="-X ${OPTARG}"  ;;
-        l) seclevel="-l ${OPTARG}"  ;;
-        t) tout=${OPTARG}           ;;
-        B) nobulk=1                 ;;
-        h) helpme=1                 ;;
-        d) debug=1                  ;;
-    esac
+	case "${OPTION}" in
+		H) hostname=${OPTARG}		;;
+		C) community="-c ${OPTARG}" ;;
+		u) authuser="-u ${OPTARG}"	;;
+		a) authproto="-a ${OPTARG}" ;;
+		A) authpass="-A ${OPTARG}"	;;
+		x) privproto="-x ${OPTARG}" ;;
+		X) privpass="-X ${OPTARG}"	;;
+		l) seclevel="-l ${OPTARG}"	;;
+		t) tout=${OPTARG}			;;
+		B) nobulk=1					;;
+		h) helpme=1					;;
+		d) debug=1					;;
+	esac
 done
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -53,66 +55,69 @@ source $libdir/generic_snmp.shlib
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 function get_snmp {
-    #
-    # Compose snmp command
-    #
-    if [ "$nobulk" ]; then walk=snmpwalk;  else walk=snmpbulkwalk; fi
-    if [ -n "$authuser" ]; then snmpv=3; else snmpv=2c; fi
+	#
+	# Compose snmp command
+	#
+	if [ "$nobulk" ]; then walk=snmpwalk;  else walk=snmpbulkwalk; fi
+	if [ -n "$authuser" ]; then snmpv=3; else snmpv=2c; fi
 
-    snmpcmd="$walk -Onqt -v $snmpv -t $tout -r 3 \
-        $community $authuser $privproto $privpass $seclevel $authproto $authpass \
-        $hostname  $baseOID"
+	snmpcmd="$walk -Onqt -v $snmpv -t $tout -r 3 \
+		$community $authuser $privproto $privpass $seclevel $authproto $authpass \
+		$hostname  $baseOID"
 
-    dbg_msg "debug snmpcmd: $snmpcmd"
+	dbg_msg "debug snmpcmd: $snmpcmd"
 
 
-    # First of all, get the SNMP-Data
-    snmpResponse=$($snmpcmd 2>&1)
-    snmpexit=$?
+	# First of all, get the SNMP-Data
+	snmpResponse=$($snmpcmd 2>&1)
+	snmpexit=$?
 
-    dbg_msg "debugsnmpresponse: $snmpResponse"
+	dbg_msg "debugsnmpresponse: $snmpResponse"
 
-    if [ $snmpexit -ne 0 ] ; then
-        echo "(UNKNOWN): Problem fetching SNMP data."
-        echo 
-        echo "SNMP Output was: $snmpResponse"
-        exit 3
-    fi
+	if [ $snmpexit -ne 0 ] ; then
+		echo "(UNKNOWN): Problem fetching SNMP data."
+		echo 
+		echo "SNMP Output was: $snmpResponse"
+		exit 3
+	fi
 
-    while read oid value
-    do 
-        snmpData[$oid]="$value"
-    done <<< "$snmpResponse"
+	while read oid value
+	do 
+		snmpData[$oid]="$value"
+	done <<< "$snmpResponse"
 }
 
 function map_status {
-    local state=$1
-    case $state in
-        1)  string=ok       ;;
-        2)  string=down     ;;
-        3)  string=silent   ;;
-        4)  string=disabled ;;
-    esac
-    echo $string
+	local state=$1
+	case $state in
+		1)	string=ok		;;
+		2)	string=down		;;
+		3)	string=silent	;;
+		4)	string=disabled ;;
+	esac
+	echo $string
 }
 function check_irf_status {
-    for oid in ${!snmpData[@]} ; do
-        #echo "OID is $oid, value is ${snmpData[$oid]}"
-        if [ "${snmpData[$oid]}" -eq 2 ] ;then
-            loop_status='[crit]'
-            outmsg='IRF-Stack: one or more ports are DOWN'
-            glob_rcode=$( set_globalstate 2 )
-        else
-            loop_status='[ok]'
-            outmsg='IRF-Stack: all ports are UP'
-        fi
-        # Extract Member and Port Info from OID
-        loop_suboid=${oid#${baseOID}.}
-        loop_member=${loop_suboid%.?}
-        loop_irfport=${loop_suboid#?.}
-        loop_irfstatus=$( map_status ${snmpData[$oid]} )
-        details+="$loop_status Stack Member $loop_member, IRF-Port $loop_irfport: ${loop_irfstatus}\n"
-    done
+	for oid in ${!snmpData[@]} ; do
+		#echo "OID is $oid, value is ${snmpData[$oid]}"
+		if [ "${snmpData[$oid]}" -eq 2 ] ;then
+			loop_status='[crit]'
+			glob_rcode=$( set_globalstate 2 )
+		else
+			loop_status='[ok]'
+		fi
+		# Extract Member and Port Info from OID
+		loop_suboid=${oid#${baseOID}.}
+		loop_member=${loop_suboid%.?}
+		loop_irfport=${loop_suboid#?.}
+		loop_irfstatus=$( map_status ${snmpData[$oid]} )
+		details+="$loop_status Stack Member $loop_member, IRF-Port $loop_irfport: ${loop_irfstatus}\n"
+	done
+	if [ "$glob_rcode" -gt 0 ] ; then
+		outmsg='IRF-Stack: one or more ports are DOWN'
+	else
+		outmsg='IRF-Stack: all ports are UP'
+	fi
 }
 
 #
