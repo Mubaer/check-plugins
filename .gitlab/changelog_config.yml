@@ -19,7 +19,7 @@ template: |
   ### {{ title }} ({% if single_change %}1 change{% else %}{{ count }} changes{% end %})
 
   {% each entries %}
-  - [{{ title }}] reference: ({{ commit.reference }})\
+  - [{{ title }}] ({{ commit.reference }})\
   {% if author.credit %} by {{ author.reference }}{% end %}\
   {% if commit.trailers.MR %}\
    ([merge request]({{ commit.trailers.MR }}))\
