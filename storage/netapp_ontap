@@ -4,9 +4,13 @@
 # 
 # Author: Xin Qu <xinqu@v32bis.cc> pgp: 0x8D677421
 #
+# Version 1.2.1 2024-04-17
+#   Added perfdata to volumes, aggregates, LUNs
+#   Removed ':' from 1st output line
+# Version 1.2 2024-04-17
+#   New features: volumes, aggregates, LUNs
 # Version 1.1 2024-04-12
 #   sysinfo: move version from perfdata to plugin output
-#
 # Version 1.0 2024-04-10
 #   1st release
 #
@@ -45,10 +49,13 @@ cli.add_argument('--user', help='API username token', required =True)
 cli.add_argument('--password', help='API password', required =True)
 cli.add_argument('--port', help='tcp port to connect to (default 443)')
 cli.add_argument('--mode', help='select check mode', required = True,
-        choices=['sysinfo', 'hardware', 'license', 'cpu', 'mem'] )
+        choices=['sysinfo', 'hardware', 'agg', 'vol', 'lun'] )
 cli.add_argument('--warn', help='warning theshold', type=int)
+cli.add_argument('--warn-distance', help='distance to critical threshold (set inside netapp)', 
+                 type=int, dest='warnDistance')
 cli.add_argument('--crit', help='critical theshold', type=int)
 cli.add_argument('-d', help='enable debugging messages', action='store_true', dest='DEBUG')
+cli.add_argument('-t', help='test mode; fail randomly', action='store_true', dest='TEST')
 args = cli.parse_args()
 #pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
 
@@ -61,7 +68,9 @@ perfdata=''
 mode=args.mode
 warn=args.warn
 crit=args.crit
+warnDistance=args.warnDistance
 DEBUG=args.DEBUG
+TESTING=args.TEST
 auth=(args.user, args.password)
 # /init vars
 
@@ -323,7 +332,8 @@ def check_disks (host, token):
             linearray.append( str( diskData.get( key ) ))
 
         #TESTING
-        #if diskData.get('name') == '1.0.4': diskData['container_type'] = 'broken'
+        if TESTING:
+            if diskData.get('name') == '1.0.4': diskData['container_type'] = 'broken'
         #/TESTING
         if diskData.get('container_type') in [ 'broken', 'unassigned' ]:
             tmpRC = 2
@@ -344,6 +354,196 @@ def check_disks (host, token):
     return [ msg, detail, diskRC ]
 
 
+#
+# Aggregates
+#
+def check_aggregates (host, token, warnDistance, warn, crit):
+    msg      = ''
+    detail   = ''
+    perfdata = ''
+    aggRC  = 0
+    if not warnDistance: warnDistance=5
+
+    url="https://{}/api/storage/aggregates".format( host )
+    resp = requests.get(url, auth=token, verify=False)
+    aggs = resp.json()
+    msg += ' Checked {} Aggregates'.format( len(aggs.get('records')) )
+    #for agg in sorted( aggs.get('records'), key=lambda x: aggs.get('name') ):
+    for agg in  aggs.get('records'):
+        tmpRC=0
+        aggHref=agg['_links']['self']['href']
+        aggURL="https://{}{}?fields=name,space,state".format( host, aggHref )
+        aggResp = requests.get(aggURL, auth=token, verify=False)
+        aggData = aggResp.json()
+
+        used = aggData.get('space').get('block_storage').get('used')
+        size = aggData.get('space').get('block_storage').get('size')
+        critThreshold = aggData.get('space').get('block_storage').get('full_threshold_percent')
+        state = aggData.get('state')
+        name = aggData.get('name')
+
+        percent_used = ( used / size ) * 100
+
+        # TESTING
+        if TESTING:
+            if name == 'aggr_data01_node2':
+                state= 'offlines'
+            if name == 'aggr_data01_node1':
+                percent_used = 97
+        # /TESTING 
+
+        if state != 'online':
+            tmpRC=1
+            msg += " | Status {}={} (expected: 'online')".format(name, state)
+            if tmpRC > aggRC:
+                aggRC=tmpRC
+
+        # Critical condition
+        if percent_used >= critThreshold:
+            tmpRC=2
+            msg += ' | Usage above crit {}(used {}%)'.format(name, percent_used)
+            if tmpRC > aggRC:
+                aggRC=tmpRC
+        # Warning condition 
+        elif percent_used >= (critThreshold - warnDistance):
+            tmpRC=1
+            msg += ' | Usage above warn {}(used {}%)'.format(name, percent_used)
+            if tmpRC > aggRC:
+                aggRC=tmpRC
+
+        detail += '{} {}; {}; used: {:.1f}%; thresholds: warn {}% / crit {}%\n'.format(rcstring( tmpRC, lineup=1 ), name, state, percent_used, (critThreshold - warnDistance ), critThreshold)
+        perfdata += '{}={:.1f}%;{};{} '.format(name, percent_used, (critThreshold - warnDistance), critThreshold)
+
+        if DEBUG:
+            print('-------------------- Aggreagate -----------------------')
+            pp.pprint( aggData )
+            print('-------------------- /Aggreagate ----------------------')
+
+    return [ msg, detail, aggRC, perfdata ]
+
+#
+# Volumes
+#
+def check_volumes (host, token, warn, crit):
+    msg      = ''
+    detail   = ''
+    perfdata = ''
+    volRC = 0
+
+    url="https://{}/api/storage/volumes".format( host )
+    resp = requests.get(url, auth=token, verify=False)
+    vols = resp.json()
+    msg += ' Checked {} Volumes'.format( len(vols.get('records')) )
+
+    for vol in sorted( vols.get('records'), key=lambda x: x.get('name') ):
+        tmpRC=0
+        volHref=vol['_links']['self']['href']
+        volURL="https://{}{}?fields=name,space,state".format( host, volHref )
+        volResp = requests.get(volURL, auth=token, verify=False)
+        volData = volResp.json()
+
+        percent_used = 100 - volData.get('space').get('available_percent') 
+        critThreshold = volData.get('space').get('full_threshold_percent')
+        warnThreshold = volData.get('space').get('nearly_full_threshold_percent')
+        state = volData.get('state')
+        name = volData.get('name')
+
+        # TESTING
+        if TESTING:
+            if name == 'vol_vmfs20':
+                state= 'offlines'
+            if name == 'vol_vmfs11':
+                percent_used = 97
+        # /TESTING 
+
+        if state != 'online':
+            tmpRC=1
+            msg += " | Status {}={} (expected 'online')".format(name, state)
+            if tmpRC > volRC:
+                volRC=tmpRC
+
+        if percent_used >= critThreshold:
+            tmpRC=2
+            if tmpRC > volRC:
+                volRC=tmpRC
+            msg += ' | Usage above crit {}(used {:.1f}%)'.format(name, percent_used)
+        elif percent_used >= warnThreshold:
+            tmpRC=1
+            if tmpRC > volRC:
+                volRC=tmpRC
+            msg += ' | Usage above warn {}(used {:.1f}%)'.format(name, percent_used)
+
+        detail += '{} {}; {}; used: {:.1f}%; thesholds: warn {}% / crit {}%\n'.format(rcstring( tmpRC, lineup=1 ), name, state, percent_used, warnThreshold, critThreshold)
+        perfdata += '{}={}%;{};{} '.format(name, percent_used, warnThreshold, critThreshold)
+
+        if DEBUG:
+            print('-------------------- Volume -----------------------')
+            pp.pprint( volData )
+            print('-------------------- /Volume ----------------------')
+
+    return [ msg, detail, volRC, perfdata ]
+
+#
+# LUNs
+#
+def check_luns (host, token, warn, crit):
+    msg      = ''
+    detail   = ''
+    perfdata = ''
+    lunRC = 0
+
+    crit = crit or 95
+    warn = warn or 90
+
+    url="https://{}/api/storage/luns".format( host )
+    resp = requests.get(url, auth=token, verify=False)
+    luns = resp.json()
+    msg += ' Checked {} LUNs'.format( len(luns.get('records')) )
+    for lun in sorted( luns.get('records'), key=lambda x: x.get('name') ):
+        tmpRC=0
+        lunHref=lun['_links']['self']['href']
+        lunURL="https://{}{}?fields=name,space,status".format( host, lunHref )
+        lunResp = requests.get(lunURL, auth=token, verify=False)
+        lunData = lunResp.json()
+
+        #percent_used = 100 - lunData.get('space').get('available_percent') 
+        state = lunData.get('status').get('state')
+        name = lunData.get('name')
+        percent_used= ( lunData.get('space').get('used') / lunData.get('space').get('size') ) * 100
+
+        # TESTING
+        if TESTING:
+            if name == '/vol/vol_vmfs12/vmfs12':
+                state= 'offlines'
+        # /TESTING 
+
+        if state != 'online':
+            tmpRC=1
+            msg += " | Status {}={} (expected 'online')".format(name, state)
+            if tmpRC > lunRC:
+                lunRC=tmpRC
+
+        if percent_used >= crit:
+            tmpRC=2
+            if tmpRC > lunRC:
+                lunRC=tmpRC
+            msg += ' | Usage above crit {}(used {:.1f}%)'.format(name, percent_used)
+        elif percent_used >= warn:
+            tmpRC=1
+            if tmpRC > lunRC:
+                lunRC=tmpRC
+            msg += ' | Usage above warn {}(used {:.1f}%)'.format(name, percent_used)
+
+        detail += '{} {}; {}; used: {:.1f}%; thesholds: warn {}% / crit {}%\n'.format(rcstring( tmpRC, lineup=1 ), name, state, percent_used, warn, crit)
+        perfdata += '{}={:.1f}%;{};{} '.format(name, percent_used, warn, crit)
+
+        if DEBUG:
+            print('-------------------- LUN -----------------------')
+            pp.pprint( lunData )
+            print('-------------------- /LUN ----------------------')
+
+    return [ msg, detail, lunRC, perfdata ]
+
 # User non-standard port number?
 if args.port:
     hostname = args.H + ':' + args.port
@@ -355,10 +555,12 @@ if mode=='sysinfo':
     out_text, detail = sysinfo(hostname, auth)
 elif mode=='hardware':
     out_text, detail, rcode = hardware(hostname, auth)
-elif mode=='mem':
-    (out_text, rcode, perfdata)=resource(hostname, args.token, 'mem', warn, crit)
-elif mode=='license':
-    (out_text,rcode)=license(hostname, args.token, warn, crit )
+elif mode=='agg':
+    out_text, detail, rcode, perfdata = check_aggregates(hostname, auth, warnDistance, warn, crit)
+elif mode=='vol':
+    out_text, detail, rcode, perfdata = check_volumes(hostname, auth, warn, crit)
+elif mode=='lun':
+    out_text, detail, rcode, perfdata = check_luns(hostname, auth, warn, crit)
 else:
     rcode=3
     out_text='Option "--mode" required'
@@ -368,5 +570,4 @@ else:
 print(  plugin_output( rcode, out_text, detail, perfdata ) )
 
 sys.exit(rcode)
-
 

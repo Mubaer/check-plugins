@@ -2,6 +2,9 @@
 #
 # Check Fortigate Firewall via API
 #
+# Version 1.0
+#  added check for IPSec VPN tunnels
+#
 # Version 0.2
 #  added cpu, mem, licence checks (without thresholds)
 #
@@ -30,19 +33,25 @@ cli.add_argument('-H', help='Hostname or IP address', required = True)
 cli.add_argument('--token', help='api access token')
 cli.add_argument('--port', help='tcp port to connect to (default 443)')
 cli.add_argument('--mode', help='select check mode', required = True,
-        choices=['version', 'health', 'license', 'cpu', 'mem'] )
+        choices=['version', 'health', 'license', 'cpu', 'mem', 'ipsec'] )
 cli.add_argument('--warn', help='warning theshold', type=int)
 cli.add_argument('--crit', help='critical theshold', type=int)
+cli.add_argument('-e', '--exclude', help='exclude tunnel from check <conn.-name>:<tserial1>[,<tserial2>]', action = 'append')
+cli.add_argument('-d', '--debug', help='enable debugging output', action="store_true")
 args = cli.parse_args()
-#pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
 
 # init vars
 rcode=0
+DEBUG=args.debug
+
 out_text=''
 detail=''
 mode=args.mode
 warn=args.warn
 crit=args.crit
+list_filter=args.exclude
+
+if DEBUG: pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
 
 def sysinfo( host, token ):
     url="https://{}/api/v2/monitor/system/status/?access_token={}".format( host, token )
@@ -84,8 +93,8 @@ def resource( host, token, res, warn, crit):
 def license( host, token, warn, crit):
     url="https://{}/api/v2/monitor/license/status/?access_token={}".format( host, token )
     jdata=request_json( url )
-    #pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
-    #pp.pprint(jdata.get('results'))
+    if DEBUG:
+        pp.pprint(jdata.get('results'))
 
     # get longest key name
     longest = len( max( jdata.get('results').keys(), key=len) )
@@ -130,6 +139,83 @@ def license( host, token, warn, crit):
     output += "\n\n" + details
     return(output, rcode)
 
+def ipsec( host, token, vpn_filter ):
+    url="https://{}/api/v2/monitor/vpn/ipsec/?access_token={}".format( host, token )
+    jdata=request_json( url )
+
+    output = ''
+    if DEBUG:
+        pp.pprint(jdata.get('results'))
+
+    tunFilter = {}
+    if vpn_filter:
+        for fPair in vpn_filter:
+            fConnection, fTunnel = fPair.split(':')
+            tunFilter[fConnection] = fTunnel.split(',')
+                
+    tunnelCount=0
+    tunnelIgnCount=0
+    tunnelErrCount=0
+    for vpn in sorted( jdata.get('results'), key=lambda x: x.get('name')):
+
+        vpnName = vpn.get('name')
+        output += '{}\tPeerID: [{}]\n'.format( vpnName, vpn.get('username'))
+        tunnel_status = {}
+
+        # Skip for connections w/o tunnels
+        if len( vpn.get('proxyid') ):
+
+            for tunnel in sorted( vpn.get('proxyid'), key=lambda x: x.get('p2serial') ):
+
+                tunnelCount += 1
+                tserial = tunnel.get('p2serial')
+
+                # Name is "<tunnel-name> (tunnel-serial)"
+                tname = '{} ({})'.format( tunnel.get('p2name'), tserial )
+                tstatus = tunnel.get('status')
+
+                tunnel_status.update({ tname: { 'status' : tstatus, 'ignore' : '' } })
+
+                if tunFilter.get(vpnName) and ( str(tserial) in tunFilter.get(vpnName) ):
+
+                    tunnel_status[tname].update( {'rc' :0 } )
+                    tunnel_status[tname].update( {'ignore' : '[ignored]' } )
+
+                    tunnelIgnCount += 1
+                else:
+                    if tstatus == 'up':
+                        tunnel_status[tname].update( {'rc' :0 } )
+                    else:
+                        tunnel_status[tname].update( {'rc' :1 } )
+                        tunnelErrCount += 1
+
+            longest = len( max( tunnel_status.keys(), key=len) )
+
+            for tunnel in tunnel_status:
+                output += '\t{}: {:<{len}} {} {}\n'.format(
+                        rcstring(tunnel_status[tunnel]['rc']),
+                        tunnel, 
+                        tunnel_status[tunnel]['status'],
+                        tunnel_status[tunnel]['ignore'], len=longest)
+
+        else:
+            output += '\t<< no tunnels for this connection found >>\n'
+        output += '\n'
+
+    head = "IPSec VPN: {} Connections, {} Tunnels ({} ignored), {} unignorable errors\n\n".format( 
+                    len(jdata.get('results')), tunnelCount, tunnelIgnCount, tunnelErrCount )
+    if tunnelIgnCount > 0: 
+        head += 'INFO: The following tunnels are ignored:\n'
+        for con in tunFilter:
+            head += '\t{}: {}\n'.format( con, ', '.join( tunFilter[con] ) )
+        head += '\n'
+
+    vpnRC = 1 if tunnelErrCount > 0 else 0
+
+    output = head + output
+    return(output, vpnRC)
+
+
 perfdata=''
 
 if args.port:
@@ -145,6 +231,8 @@ elif mode=='mem':
     (out_text, rcode, perfdata)=resource(hostname, args.token, 'mem', warn, crit)
 elif mode=='license':
     (out_text,rcode)=license(hostname, args.token, warn, crit )
+elif mode=='ipsec':
+    (out_text,rcode)=ipsec( hostname, args.token, list_filter )
 else:
     rcode=3
     out_text='Option "--mode" required'
