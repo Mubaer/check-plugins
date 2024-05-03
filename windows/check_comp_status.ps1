@@ -170,6 +170,9 @@ $Sophos = ""
 $Forti = ""
 $Defender = ""
 $AVInstalled = ""
+$firewall = ""
+$ruleexists = ""
+
 $exitcode = 0
 
 # CPUs in Cores
@@ -205,7 +208,7 @@ $version     = (Get-itemproperty -path "HKLM:\SOFTWARE\Microsoft\Windows NT\Curr
 $patchlevel  = (Get-itemproperty -path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion" -name UBR).UBR
 $buildnumber = $version + "." + $patchlevel
     
-#Rebbot required?
+#Reboot required?
 $trp = Test-PendingReboot
     
 #AV installed?
@@ -219,15 +222,30 @@ if($Sophos -or $Forti -or ($Defender -eq "Running")){
 $AVInstalled = $True
     
 }
+
+
+#Firewall active?
+$firewall = $(Get-NetFirewallProfile -Profile Domain -PolicyStore ActiveStore).Enabled
+
+#Firewall exception applied?
+$ruleexists = $(Get-NetFirewallRule -DisplayName "Enable PSUpdate" -ea SilentlyContinue).Enabled
+
+if(-not $ruleexists){
+$ruleexists = "False"
+}
+
+# compile the status
 $result =  "Compliance check plugin"               + "`r`n"
 $result += "CPUs (Cores) : " + $CPUS        + "`r"
 $result += "RAM (GB) : " + $RAM         + "`r"
 $result += "Diskrelative (%) : " + $diskrel    + "`r"
-$result += "Diskfree (GB) : " + $diskgb    + "`r"
+$result += "Diskabsolute (GB) : " + $diskgb    + "`r"
 $result += "Activated (OS) : " + $Licensed    + "`r"
 $result += "Buildnumber (OS) : " + $buildnumber + "`r"
 $result += "Reboot Pending (OS) : " + $trp         + "`r"
 $result += "AntiVirus installed : " + $AVInstalled + "`r"
+$result += "Firewall active : " + $firewall    + "`r"
+$result += "Firewall rule : " + $ruleexists    + "`r"
     
     
 Write-Host $result
