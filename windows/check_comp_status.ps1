@@ -234,6 +234,10 @@ if(-not $ruleexists){
 $ruleexists = "False"
 }
 
+if($firewall -like "True" -and $ruleexists -like "False"){
+$exitcode = 1    
+}
+
 # compile the status
 $result =  "Compliance check plugin"               + "`r`n"
 $result += "CPUs (Cores) : " + $CPUS        + "`r"
