@@ -5,7 +5,7 @@
 
 - [storage/netapp_ontap: enhancements](managed-it/monitoring-system-icinga/check-plugins@6963553b66bd832601a615a450da9b8429a8a23e)
 
-## v1.0.1
+## v1.0.2-6-g316a5d9
  (2024-05-02)
 
 ### Fixed (1 change)
