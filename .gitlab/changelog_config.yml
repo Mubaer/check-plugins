@@ -4,12 +4,13 @@
 # more information.
 categories:
   added: Added
-  fixed: Bug fixes
+  fix: Bug fixes
   changed: Changed
   deprecated: Deprecated
   removed: Removed
   security: Security
   performance: Performance
+  feature: New Features
   other: Other
 include_groups:
   - gitlab-org/gitlab-core-team/community-members
