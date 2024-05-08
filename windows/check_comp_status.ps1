@@ -156,6 +156,15 @@ function Test-PendingReboot {
     
         return $false
     }
+
+$ExitCode = 0
+ function Set-ExitCode {
+    param ($code)
+    if ($ExitCode -lt $code) {
+        $ExitCode = $code
+    }
+    return $ExitCode
+}
 Clear-Host
     
     
@@ -172,8 +181,6 @@ $Defender = ""
 $AVInstalled = ""
 $firewall = ""
 $ruleexists = ""
-
-$exitcode = 0
 
 # CPUs in Cores
 $CPUS = wmic cpu get NumberOfCores,NumberOfLogicalProcessors
@@ -235,7 +242,7 @@ $ruleexists = "False"
 }
 
 if($firewall -like "True" -and $ruleexists -like "False"){
-$exitcode = 1    
+$exitcode = Set-ExitCode -code 1
 }
 
 # compile the status
@@ -254,5 +261,8 @@ $result += "Firewall rule : " + $ruleexists    + "`r"
     
 Write-Host $result
 
-$host.SetShouldExit($exitcode)
-exit
+$LASTEXITCODE = $exitCode
+;exit ($exitCode)
+
+#$host.SetShouldExit($exitcode)
+#exit
