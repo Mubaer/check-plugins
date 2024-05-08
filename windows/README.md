@@ -18,3 +18,7 @@ Zum Verteilen der Änderungen auf alle Satelliten sind diese Schritte notwendig:
 0:sysop@mgmnt:~/check_plugins/srcMR/windows$ cd ~/ans/
 0:sysop@mgmnt:~/ans$ ap pb_satellite.yaml
 ```
+
+
+Powershell mit Icinga
+https://community.icinga.com/t/windows-powershell-checks-with-icinga2/712
