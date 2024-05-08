@@ -4,6 +4,9 @@
 # 
 # Author: Xin Qu <xinqu@v32bis.cc> pgp: 0x8D677421
 #
+# Version 1.2.2 2024-05-06
+#   Ignore 'flexclone' volumes by default
+#   Option to include flexclones
 # Version 1.2.1 2024-04-17
 #   Added perfdata to volumes, aggregates, LUNs
 #   Removed ':' from 1st output line
@@ -54,6 +57,8 @@ cli.add_argument('--warn', help='warning theshold', type=int)
 cli.add_argument('--warn-distance', help='distance to critical threshold (set inside netapp)', 
                  type=int, dest='warnDistance')
 cli.add_argument('--crit', help='critical theshold', type=int)
+cli.add_argument('--with-flexclone', help='include flexclone volumes?', action='store_true',
+                 dest='flexclone', default=False)
 cli.add_argument('-d', help='enable debugging messages', action='store_true', dest='DEBUG')
 cli.add_argument('-t', help='test mode; fail randomly', action='store_true', dest='TEST')
 args = cli.parse_args()
@@ -65,13 +70,14 @@ out_text=''
 detail=''
 perfdata=''
 
-mode=args.mode
-warn=args.warn
-crit=args.crit
-warnDistance=args.warnDistance
-DEBUG=args.DEBUG
-TESTING=args.TEST
-auth=(args.user, args.password)
+mode =             args.mode
+warn =             args.warn
+crit =             args.crit
+warnDistance =     args.warnDistance
+DEBUG =            args.DEBUG
+TESTING =          args.TEST
+auth =             (args.user, args.password)
+with_flexclones =  args.flexclone
 # /init vars
 
  
@@ -424,13 +430,18 @@ def check_aggregates (host, token, warnDistance, warn, crit):
 #
 # Volumes
 #
-def check_volumes (host, token, warn, crit):
+def check_volumes (host, token, warn, crit, flexclone):
     msg      = ''
     detail   = ''
     perfdata = ''
     volRC = 0
 
-    url="https://{}/api/storage/volumes".format( host )
+    if not flexclone:
+        apiArg = '?clone.is_flexclone=false'
+    else:
+        apiArg = ''
+
+    url="https://{}/api/storage/volumes{}".format( host, apiArg )
     resp = requests.get(url, auth=token, verify=False)
     vols = resp.json()
     msg += ' Checked {} Volumes'.format( len(vols.get('records')) )
@@ -558,7 +569,7 @@ elif mode=='hardware':
 elif mode=='agg':
     out_text, detail, rcode, perfdata = check_aggregates(hostname, auth, warnDistance, warn, crit)
 elif mode=='vol':
-    out_text, detail, rcode, perfdata = check_volumes(hostname, auth, warn, crit)
+    out_text, detail, rcode, perfdata = check_volumes(hostname, auth, warn, crit, with_flexclones)
 elif mode=='lun':
     out_text, detail, rcode, perfdata = check_luns(hostname, auth, warn, crit)
 else:

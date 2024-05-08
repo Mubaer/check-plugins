@@ -4,12 +4,14 @@
 # more information.
 categories:
   added: Added
-  fixed: Bug fixes
+  fix: Bug fixes
+  Fixed: Bug fixes
   changed: Changed
   deprecated: Deprecated
   removed: Removed
   security: Security
   performance: Performance
+  feature: New Features
   other: Other
 include_groups:
   - gitlab-org/gitlab-core-team/community-members
@@ -19,7 +21,7 @@ template: |
   ### {{ title }} ({% if single_change %}1 change{% else %}{{ count }} changes{% end %})
 
   {% each entries %}
-  - [{{ title }}] ({{ commit.reference }})\
+  - [{{ title }}]({{ commit.reference }})\
   {% if author.credit %} by {{ author.reference }}{% end %}\
   {% if commit.trailers.MR %}\
    ([merge request]({{ commit.trailers.MR }}))\
