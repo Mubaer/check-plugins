@@ -183,14 +183,7 @@ $firewall = ""
 $ruleexists = ""
 
 # CPUs in Cores
-$CPUS = wmic cpu get NumberOfCores,NumberOfLogicalProcessors
- 
-$CPUS = $CPUS[2]
-    
-$CPUS = $CPUS.Substring(3)
-$CPUS = $CPUS.TrimStart()
-$CPUS = $CPUS.TrimEnd()
-    
+$CPUS = $(Get-CimInstance -ClassName 'Win32_Processor' | Measure-Object -Property 'NumberOfCores' -Sum).Sum
     
 #RAM in GB
 $memory = Get-WMIObject -Class Win32_Computersystem -ErrorAction SilentlyContinue | Select-Object TotalPhysicalMemory
