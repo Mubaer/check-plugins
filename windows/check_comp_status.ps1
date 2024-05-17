@@ -158,13 +158,6 @@ function Test-PendingReboot {
     }
 
 $ExitCode = 0
- function Set-ExitCode {
-    param ($code)
-    if ($ExitCode -lt $code) {
-        $ExitCode = $code
-    }
-    return $ExitCode
-}
 Clear-Host
     
     
@@ -225,17 +218,15 @@ $AVInstalled = $True
 
 
 #Firewall active?
-$firewall = $(Get-NetFirewallProfile -Profile Domain -PolicyStore ActiveStore).Enabled
+$FWprofiles = $(Get-NetFirewallSetting  -PolicyStore ActiveStore)
+$FWActiveProfile = $FWprofiles.ActiveProfile
+$firewall = $(Get-NetFirewallProfile -Profile $FWActiveProfile -PolicyStore ActiveStore).Enabled
 
 #Firewall exception applied?
 $ruleexists = $(Get-NetFirewallRule -DisplayName "Enable PSUpdate" -ea SilentlyContinue).Enabled
 
 if(-not $ruleexists){
 $ruleexists = "False"
-}
-
-if($firewall -like "True" -and $ruleexists -like "False"){
-$exitcode = Set-ExitCode -code 1
 }
 
 # compile the status
@@ -256,6 +247,3 @@ Write-Host $result
 
 $LASTEXITCODE = $exitCode
 ;exit ($exitCode)
-
-#$host.SetShouldExit($exitcode)
-#exit
