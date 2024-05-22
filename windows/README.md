@@ -10,15 +10,13 @@ Dateien in diesem Verzechnis werden beim Abspielen der ansible-Rolle
 Die Dateien sind dann unter [http(s)://\<satellit\>/downloads/windowsCheckPlugins/](http(s)://\<satellit\>/downloads/windowsCheckPlugins/) 
 zu finden.
 
-Zum Verteilen der Änderungen auf alle Satelliten sind diese Schritte notwendig:
+Zum Verteilen der Änderungen auf alle Satelliten reicht es, die Rolle für
+Icinga-Satelliten zu starten:
 
 ```
-0:sysop@mgmnt:~$ cd ~/check_plugins/srcMR/windows
-0:sysop@mgmnt:~/check_plugins/srcMR/windows$ git pull
-0:sysop@mgmnt:~/check_plugins/srcMR/windows$ cd ~/ans/
-0:sysop@mgmnt:~/ans$ ap pb_satellite.yaml
+0:sysop@mgmnt:~$ cd ~/automation/ansible/
+0:sysop@mgmnt:~/automation/ansible$ ansible-playbook appNode_icingaSatellite.yaml
 ```
-
 
 Powershell mit Icinga
 https://community.icinga.com/t/windows-powershell-checks-with-icinga2/712
