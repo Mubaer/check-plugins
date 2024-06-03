@@ -219,8 +219,22 @@ $AVInstalled = $True
 
 #Firewall active?
 $FWprofiles = $(Get-NetFirewallSetting  -PolicyStore ActiveStore)
-$FWActiveProfile = $FWprofiles.ActiveProfile
-$firewall = $(Get-NetFirewallProfile -Profile $FWActiveProfile -PolicyStore ActiveStore).Enabled
+$FWActiveProfiles = $($FWprofiles.ActiveProfile).ToString()
+$FWActiveProfile = $FWActiveProfiles.Split(", ")
+if($FWActiveProfile[0]){
+$FW_Do = $(Get-NetFirewallProfile -Profile $FWActiveProfile[0] -PolicyStore ActiveStore).Enabled
+}
+if($FWActiveProfile[2]){
+$FW_Pu = $(Get-NetFirewallProfile -Profile $FWActiveProfile[2] -PolicyStore ActiveStore).Enabled
+}
+if($FWActiveProfile[4]){
+$FW_Pr = $(Get-NetFirewallProfile -Profile $FWActiveProfile[4] -PolicyStore ActiveStore).Enabled
+}
+if($FW_Do -or $FW_Pu -or $FW_Pr){
+$firewall = "True"
+}else{
+$firewall = "False"
+}
 
 #Firewall exception applied?
 $ruleexists = $(Get-NetFirewallRule -DisplayName "Enable PSUpdate" -ea SilentlyContinue).Enabled
