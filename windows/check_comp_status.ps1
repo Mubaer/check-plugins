@@ -214,6 +214,8 @@ if($Sophos -or $Forti -or ($Defender -eq "Running")){
     
 $AVInstalled = $True
     
+}else {
+    $AVInstalled = $false
 }
 
 
