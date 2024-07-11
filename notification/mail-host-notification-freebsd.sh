@@ -112,7 +112,10 @@ center_string() {
 }
 
 ## Main
-while getopts 4:6::b:c:d:f:hi:k:l:n:o:r:s:t:v: opt
+
+# Set defaults
+ICINGADB=0
+while getopts 4:6::b:c:d:Df:hi:k:l:n:o:r:s:t:v: opt
 do
   case "$opt" in
     4) HOSTADDRESS=$OPTARG ;;
@@ -120,6 +123,7 @@ do
     b) NOTIFICATIONAUTHORNAME=$OPTARG ;;
     c) NOTIFICATIONCOMMENT=$OPTARG ;;
     d) LONGDATETIME=$OPTARG ;; # required
+    D) ICINGADB=1;;
     f) MAILFROM=$OPTARG ;;
     h) Help ;;
     i) ICINGAWEB2URL=$OPTARG ;;
@@ -225,11 +229,21 @@ fi
 
 ## Check whether Icinga Web 2 URL was specified.
 if [ -n "$ICINGAWEB2URL" ] ; then
+    if [ $ICINGADB -eq 0 ] ; then
+
   NOTIFICATION_MESSAGE="$NOTIFICATION_MESSAGE
 
 Link to IcingaWeb:
 ------------------
 $ICINGAWEB2URL/monitoring/host/show?host=$(urlencode "$HOSTNAME")"
+    else
+
+  NOTIFICATION_MESSAGE="$NOTIFICATION_MESSAGE
+
+Link to IcingaWeb:
+------------------
+$ICINGAWEB2URL/icingadb/host?name=$(urlencode "$HOSTNAME")"
+    fi
 fi
 
 ## Append parsable line for ticket-automation
@@ -273,3 +287,5 @@ else
   /usr/bin/printf "%b" "$NOTIFICATION_MESSAGE" \
   | $MAILBIN -s "$SUBJECT" $USEREMAIL
 fi
+
+# vim: set expandtab:ts=4:sw=4
