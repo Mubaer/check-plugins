@@ -14,6 +14,8 @@ def parse_command_line():
     parser.add_argument('--host', type=str, help='Veeam Host to check')
     parser.add_argument('--username', type=str, help='Veeam Username')
     parser.add_argument('--password', type=str, help='Veeam Password')
+    parser.add_argument('--tmpdir', type=str, default='/var/tmp',
+                        help='Directory for status file (default: /var/tmp)')
     args = parser.parse_args()
     return args
 
@@ -137,10 +139,11 @@ def compare_jobs(backup_ids):
     removed_jobs = []
     added_jobs = []
     new_file = 0
+    statefile=args.tmpdir + '/check_veeam_backup-' + args.host
     for backup_id in backup_ids:
         current_jobs.append(backup_id['name'])
-    if os.path.exists('veeam_backup_jobs.txt'):
-        with open('veeam_backup_jobs.txt', 'r') as file:
+    if os.path.exists(statefile):
+        with open(statefile, 'r') as file:
             previous_jobs = file.read().splitlines()
         for job in previous_jobs:
             if job not in current_jobs:
@@ -152,7 +155,7 @@ def compare_jobs(backup_ids):
         for job in current_jobs:
             added_jobs.append(job)
         new_file = 1
-    with open('veeam_backup_jobs.txt', 'w') as file:
+    with open(statefile, 'w') as file:
         for job in current_jobs:
             file.write(job + '\n')
     if new_file == 0:
