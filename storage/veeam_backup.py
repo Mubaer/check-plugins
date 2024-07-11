@@ -5,7 +5,7 @@ import argparse, requests, sys, os
 
 # Variables
 requests.packages.urllib3.disable_warnings()
-checkVersion = '1.0'
+checkVersion = '1.1'
 
 # Functions
 def parse_command_line():
