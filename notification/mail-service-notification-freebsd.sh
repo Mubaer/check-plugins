@@ -114,7 +114,10 @@ center_string() {
 }
 
 ## Main
-while getopts 4:6:b:c:d:e:f:hi:k:l:n:o:r:s:t:u:v: opt
+
+# Set defaults
+ICINGADB=0
+while getopts 4:6:b:c:d:De:f:hi:k:l:n:o:r:s:t:u:v: opt
 do
   case "$opt" in
     4) HOSTADDRESS=$OPTARG ;;
@@ -122,6 +125,7 @@ do
     b) NOTIFICATIONAUTHORNAME=$OPTARG ;;
     c) NOTIFICATIONCOMMENT=$OPTARG ;;
     d) LONGDATETIME=$OPTARG ;; # required
+    D) ICINGADB=1;;
     e) SERVICENAME=$OPTARG ;; # required
     f) MAILFROM=$OPTARG ;;
     h) Usage ;;
@@ -242,6 +246,8 @@ fi
 
 ## Check whether Icinga Web 2 URL was specified.
 if [ -n "$ICINGAWEB2URL" ] ; then
+    if [ $ICINGADB -eq 0 ] ; then
+
   # START of multiline string
   NOTIFICATION_MESSAGE="$NOTIFICATION_MESSAGE
 
@@ -250,6 +256,17 @@ Link to IcingaWeb:
 ------------------
 $ICINGAWEB2URL/monitoring/service/show?host=$(urlencode "$HOSTNAME")&service=$(urlencode "$SERVICENAME")"
   # END of multiline string
+    else
+
+  # START of multiline string
+  NOTIFICATION_MESSAGE="$NOTIFICATION_MESSAGE
+
+
+Link to IcingaWeb:
+------------------
+$ICINGAWEB2URL/icingadb/service?name=$(urlencode "$SERVICENAME")&host.name=$(urlencode "$HOSTNAME")"
+  # END of multiline string
+    fi
 fi
 
 h2text=`center_string $hline_center 'Technical Details'`
@@ -294,3 +311,5 @@ else
   /usr/bin/printf "%b" "$NOTIFICATION_MESSAGE" \
   | $MAILBIN -s "$SUBJECT" $USEREMAIL
 fi
+
+# vim: set expandtab:ts=4:sw=4
