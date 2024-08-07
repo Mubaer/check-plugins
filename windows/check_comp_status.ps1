@@ -176,7 +176,7 @@ $firewall = ""
 $ruleexists = ""
 
 # CPUs in Cores
-$CPUS = $(Get-WmiObject -Class Win32_processor | Select-Object NumberOfLogicalProcessors).NumberOfLogicalProcessors
+$CPUS = $(Get-WmiObject -Class Win32_processor | Measure-Object).count * $(Get-WmiObject -Class Win32_processor | Select-Object NumberOfLogicalProcessors)[0].NumberOfLogicalProcessors
     
 #RAM in GB
 $memory = Get-WMIObject -Class Win32_Computersystem -ErrorAction SilentlyContinue | Select-Object TotalPhysicalMemory
