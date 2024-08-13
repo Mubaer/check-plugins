@@ -1,3 +1,8 @@
+#######################################
+#  Check Status of ELO's SFControl
+#  by m.wahl@mr-daten.de
+#  Version 0.2  2024-08-13
+#######################################
 $SFexe = 'D:\DocXtractorII\System\bin\SFControl.exe'
 $TaskName = 'DailyTasks'
  
