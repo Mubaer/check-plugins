@@ -1,37 +1,114 @@
 #!/usr/bin/env bash
+
+#
+# Meraki Cloud Alert checker
+# v1.0, Date:   Tue Sep 12 11:02:14 2023 +0200
+#	- first stable version, with filters
+#
+# v2.0, Date: Thu Aug 22 15:59:10 CEST 2024
+#	- bugfix device filter
+#	- added include- and exclude filter arguments
+#	  "-i" and "-e"
+
 callpath=`dirname $0`
 LIBPATH=$callpath/../lib
 . $LIBPATH/bashPluginFunctions.sh
 
 OPTERR=1
-while getopts "s:k:m:" OPTION ; do
-    case "$OPTION" in
-    s)  serial="$OPTARG"    ;;
-    k)  apikey="$OPTARG"    ;;
-    m)  meraki_url="$OPTARG" ;;
-    ?)   exit 3 ;;
-    esac
+while getopts "s:k:m:e:i:h" OPTION ; do
+	case "$OPTION" in
+	s)	serial="$OPTARG"	;;
+	k)	apikey="$OPTARG"	;;
+	m)	meraki_url="$OPTARG" ;;
+	e)	exclude_cli="$OPTARG" ;;
+	i)	include_cli="$OPTARG" ;;
+	h)	helpme=y ;;
+	?)	 exit 3 ;;
+	esac
 done
 
-if [ -z "$serial" -o -z "$apikey" ] ; then
-    RC=3
-    msg="$0: parameter missing"
-    echo -e "${status[$RC]}: $msg"
-    exit $RC
-fi
+function help {
+	cat <<-EOF
+	$0 -s <serial> -k <api-keuy> [-m <clud-url> -e <exclude1:...:exclucdeN>]
 
+	-s <serial>     serial number of the device
+	-k <api-key>    API-Key for Merkai-Cloud
+	-m <merki-cloud-url>
+	        URL where to find meraki cloud, defaults to
+	        'https://n121.meraki.com/'
+	-e <exclude1:excluce2:...:excludeN>
+	        Exclude this Notification types from beeing checked
+
+EOF
+exit 1
+}
+
+# Preflight checks
+if [ "$helpme" == 'y' ] ; then
+	help
+fi
 : ${meraki_url=https://n121.meraki.com/}
 
+if [ -z "$serial" -o -z "$apikey" ] ; then
+	exit_status 3 "$0: parameter missing"
+fi
+
+if [ -n "$exclude_cli" -a -n "$include_cli" ] ; then
+	exit_status 3 "$0: you cannot define exclude- AND include-filters"
+fi
+# / Preflight checks
+
+
+#
+# Build filters
+# - Merge list of type filters
+#
+
+# - exclude
+IFS=':' read -r -a exclude_types <<< "$exclude_cli"
+exclude_types_default=("DFS event pattern")
+exclude_types+=( "${exclude_types_default[@]}" )
+
+# - include
+IFS=':' read -r -a include_types <<< "$include_cli"
+#include_types_default=("Device firmware mismatch")
+#include_types+=( "${include_types_default[@]}" )
+
+if [ -n "$exclude_cli" ] ; then
+	filter_mode=exclude
+elif [ -n "$include_cli" ] ; then
+	filter_mode=include
+else
+	filter_mode=none
+fi
+
 # Build jq type filter for 'select'
-filter_types=("DFS event pattern")
 type_filter=''
-for ftype in "${filter_types[@]}"; do
-    if [ -z "$type_filter" ] ; then
-        type_filter+=".type != \"$ftype\""
-    else
-        type_filter+=" and .type != \"$ftype\""
-    fi
-done
+if [ $filter_mode == 'exclude' ] ; then
+	for ftype in "${exclude_types[@]}"; do
+		if [ -z "$type_filter" ] ; then
+			type_filter+=".type != \"$ftype\""
+		else
+			type_filter+=" and .type != \"$ftype\""
+		fi
+		output_filter="${exclude_types[@]}"
+	done
+elif [ $filter_mode == 'include' ] ; then
+	for ftype in "${include_types[@]}"; do
+		if [ -z "$type_filter" ] ; then
+			type_filter+=".type == \"$ftype\""
+			output_filter+="$ftype"
+		else
+			type_filter+=" or .type == \"$ftype\""
+			output_filter+=", $ftype"
+		fi
+	done
+fi
+
+#
+# / build filters
+#
+
 
 #
 # Get Network-ID of switch
@@ -56,16 +133,22 @@ else
 fi
 
 #
-# Get Alets for this switch
+# Get Alets for this neetwork ID
 #
-filter='.'
+filter_response='.'
 response=$( curl -s $meraki_url/api/v1/networks/$network/health/alerts \
     -H 'Content-Type: application/json' \
     -H 'Accept: application/json' \
     -H "X-Cisco-Meraki-API-Key: $apikey"  \
-    | jq -r "$filter"
+    | jq -r "$filter_response"
     )
 jq_rc=$?
+
+# DEBUG block
+#echo "DEBUG response -------------------------"
+#echo "$response" > test.response
+#echo "/DEBUG response ------------------------"
+# /DEBUG block
 
 # No alerts at all? Good!
 if [ $jq_rc -eq 0 -a "$response" == '[]' ] ; then
@@ -73,16 +156,24 @@ if [ $jq_rc -eq 0 -a "$response" == '[]' ] ; then
 # Alerts, but for our device/serial?
 else
     # Select only elements with our device in devices array
-    device_filter="select(.[].scope.devices[].serial == \"$serial\")"
+	# a) build the filter expression
+    device_filter=".[] | select(.scope.devices[].serial == \"$serial\")"
+		#echo "DEBUG device filter is '$device_filter'"
+	# b) filter response to current device
     device_errors=$( echo "$response" | jq "$device_filter" )
-    if [ -n "$device_errors" ] ;then
-        # Build final filter
-        alert_filter=".[] | select ($type_filter)"
-        alert_formater='"Category: \"" + .category + "\" | Type: \"" + .type + "\" | Severity: \"" + .severity + "\""'
-        complete_filter="$alert_filter | $alert_formater"
 
-        formated=$( echo "$device_errors" | jq -r  "$complete_filter" )
+    if [ -n "$device_errors" ] ;then
+		# Filter errors of this device by 'type', if filters are given with -e or -i
+		if [ $filter_mode != 'none' ] ;then
+			# Build final filter
+			alert_filter=". | select ($type_filter)"
+			device_errors=$( echo "$device_errors" | jq -r "$alert_filter" )
+		fi
+
+		alert_formater='"Category: \"" + .category + "\" | Type: \"" + .type + "\" | Severity: \"" + .severity + "\""'
+        formated=$( echo "$device_errors" | jq -r  "$alert_formater" )
         if [ -n "$formated" ] ; then
+			formated+=`echo -e "\n\nAlert filter ($filter_mode): $output_filter"`
             exit_status 1 'Alerts found' "$formated"
         else
             exit_status 0 'No alerts found'
