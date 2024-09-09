@@ -107,7 +107,7 @@ def create_backup_check(backups):
         session_results = [session['result']['result'] for session in recent_sessions]
         last3results = session_results[0]+', '+session_results[1]+', '+session_results[2]
         if session_results[0] == 'Success':
-            job_result = 'Success'
+            job_result = 'OK'
             results['success'] += 1
         elif session_results[0] == 'Failed' and session_results[1] == 'Success':
             job_result = 'Warning'
