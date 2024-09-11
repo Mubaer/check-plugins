@@ -55,18 +55,17 @@ fi
 #
 # Get Alets for this switch
 #
-filter=".[] | select(.category == \"Connectivity\" ) | .scope.devices[] | select(.serial == \"$serial\") | .url"
+filter=".[] | select(.category == \"Connectivity\" and .type == \"Unreachable device\" ) | .scope.devices[] | select(.serial == \"$serial\") |  .url"
 response=$( curl -s $meraki_url/api/v1/networks/$network/health/alerts \
     -H 'Content-Type: application/json' \
     -H 'Accept: application/json' \
-    -H "X-Cisco-Meraki-API-Key: $apikey"  \
+    -H "X-Cisco-Meraki-API-Key: $apikey" \
     | jq -r "$filter"
     )
 jq_rc=$?
 
 if [ $jq_rc -eq 0 -a  -z "$response" ] ; then
     exit_status 0 'Device is reachable; no connectivity alarm found.' "$device_info"
-    exit_status 0 'Device is reachable; no connectivity alarm found.'
 else
     exit_status 2 "Connectivity alert found for this device ($serial)" "$response\n$device_info"
 fi
