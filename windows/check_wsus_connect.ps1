@@ -57,7 +57,7 @@ $groups = $(Get-PSWSUSGroup | where {$_.Name -match "MR_Server"}).name
 
 foreach ($group in $groups){
 
-if ($(Get-WsusComputer -ComputerTargetGroups $group) -match "verfügbar" -or $(Get-WsusComputer -ComputerTargetGroups $group) -match "availabe"){
+if ($(Get-WsusComputer -ComputerTargetGroups $group) -match "verfügbar" -or $(Get-WsusComputer -ComputerTargetGroups $group) -match "available"){
 $result += $group + ":" + "`t" + "0"  + "`r"
 }else{
 
