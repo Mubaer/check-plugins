@@ -19,8 +19,10 @@ function Set-ExitCode {
 $errordate = $(Get-Date).AddDays(-10)
 
 
+$neverreported = $(Get-WsusComputer -ToLastReportedStatusTime "01.01.1001"| Where-Object {$_ -notmatch "Es sind keine"} | Measure-Object).count
 $errorsync = $(Get-WsusComputer -ToLastSyncTime $errordate| Where-Object {$_ -notmatch "Es sind keine"} | Measure-Object).count
-$errorreport = $(Get-WsusComputer -ToLastReportedStatusTime $errordate| Where-Object {$_ -notmatch "Es sind keine"} | Measure-Object).count
+$errorreport = $(Get-WsusComputer -ToLastReportedStatusTime $errordate| Where-Object {$_ -notmatch "Es sind keine"} | Measure-Object).count - $neverreported
+
 
 if($errorsync -gt 0 -or $errorreport -gt 0){
 $exitcode = Set-ExitCode -code 2     
@@ -46,7 +48,8 @@ $result += "Assets with errors:" + "`r"
 $result += "(WARN) Assets last contact > 5 days: " + $warnsync + "`r"
 $result += "(CRIT) Assets last contact >10 days: " + $errorsync + "`r"
 $result += "(WARN) Assets not reported > 5 days: " + $warnreport + "`r"
-$result += "(CRIT) Assets not reported >10 days: " + $errorreport + "`r`n"
+$result += "(CRIT) Assets not reported >10 days: " + $errorreport + "`r"
+$result += "(CRIT) Assets never reported       : " + $neverreported + "`r`n"
 $result += "WSUS Server Groups:" + "`r"
 
 
