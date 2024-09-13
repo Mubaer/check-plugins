@@ -2,6 +2,9 @@
 #
 # Check Fortigate Firewall via API
 #
+# Version 1.1 (2024-09-02)
+#  new feature: option -e can be used for licenses
+#
 # Version 1.0
 #  added check for IPSec VPN tunnels
 #
@@ -90,7 +93,7 @@ def resource( host, token, res, warn, crit):
     output+="  ({} minute average)".format(interval)
     return (output, rcode, perfdata)
 
-def license( host, token, warn, crit):
+def license( host, token, warn, crit, lic_filter):
     url="https://{}/api/v2/monitor/license/status/?access_token={}".format( host, token )
     jdata=request_json( url )
     if DEBUG:
@@ -120,11 +123,18 @@ def license( host, token, warn, crit):
         if l_expires != None:
             exp_date = datetime.fromtimestamp( l_expires, timezone.utc )
             exp_period = ( exp_date - now ).days
-            details += "{:<{len}}| {:^17}| expires in {} days\n".format( \
+            details += "{:<{len}}| {:^17}| expires in {} days".format( \
                     lic+':', l_status, exp_period, len=longest )
-            loop_rc = check_threshold( exp_period, warn, crit, 'lt' )
+
+            if lic_filter and lic in lic_filter:
+                loop_rc = 0
+                details += " [ignored!]\n"
+            else:
+                loop_rc = check_threshold( exp_period, warn, crit, 'lt' )
+                details += "\n"
+
             rcode = update_rc( loop_rc, rcode )
-            if loop_rc > 0:
+            if loop_rc > 0 and exp_period > 0:
                 if 'expiring_soon' not in status_count:
                     status_count['expiring_soon']=1
                 else:
@@ -230,7 +240,7 @@ elif mode=='cpu':
 elif mode=='mem':
     (out_text, rcode, perfdata)=resource(hostname, args.token, 'mem', warn, crit)
 elif mode=='license':
-    (out_text,rcode)=license(hostname, args.token, warn, crit )
+    (out_text,rcode)=license(hostname, args.token, warn, crit, list_filter )
 elif mode=='ipsec':
     (out_text,rcode)=ipsec( hostname, args.token, list_filter )
 else:
