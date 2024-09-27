@@ -33,7 +33,7 @@ cli = argparse.ArgumentParser \
     (description='Check Sophos Cloud Services for Endpoint-Status or Alerts')
 
 cli.add_argument('-H', help='Hostname or IP address', required = True)
-cli.add_argument('--token', help='api access token')
+cli.add_argument('--token', help='api access token', required = True)
 cli.add_argument('--port', help='tcp port to connect to (default 443)')
 cli.add_argument('--mode', help='select check mode', required = True,
         choices=['version', 'health', 'license', 'cpu', 'mem', 'ipsec'] )
