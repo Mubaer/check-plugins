@@ -4,6 +4,10 @@
 #
 # Author: msander
 #
+# Version: 1.0  2024-09-30
+#   - declare script as 'stable'
+#   - added feature "ignore trial" and "ignore unsubscribed"
+#
 # Version: 0.6  2023-04-20
 #   prettyfied ha-check
 #
@@ -37,6 +41,8 @@ declare -A snmpData
 declare -A id
 declare -A nameMap
 declare -a elementList
+IGNORE_UNSUB_LIC=0
+IGNORE_TRIAL_LIC=0
 
 glob_rcode=0
 
@@ -71,6 +77,8 @@ while getopts "H:C:u:x:X:a:A:l:w:c:m:f:F:t:Bhd-:" OPTION ; do
                 ha-disabled-rc) ha_disabled_rc=$OPTARG;;
                 ha-localstate-ok)    ha_local_status_ok=$OPTARG;;
                 ha-peerstate-ok)     ha_peer_status_ok=$OPTARG;;
+                ignore-trial)       IGNORE_TRIAL_LIC=1;;
+                ignore-unsub)       IGNORE_UNSUB_LIC=1;;
                 *) echo "unknown option $OPTION"; exit 3;;
             esac
 
@@ -174,6 +182,12 @@ function license_check {
             # skip state calculations when status is 'expired/4' anyway
             if [ $licStatus -eq 4 ] ; then
                 loop_rcode=2
+            # ignore trial licenses (if CLI argument set)
+            elif [ $licStatus -eq 1 -a "$IGNORE_TRIAL_LIC" -eq 1 ] ; then
+                loop_rcode=0
+            # ignore unsubscribed licenses (if CLI argument set)
+            elif [ $licStatus -eq 2 -a "$IGNORE_UNSUB_LIC" -eq 1 ] ; then
+                loop_rcode=0
             else 
                 loop_rcode=$( calc_state $(( -$days_til_expire )) $lic_warn $lic_crit )
             fi
