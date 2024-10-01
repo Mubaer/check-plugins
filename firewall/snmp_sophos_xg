@@ -4,6 +4,10 @@
 #
 # Author: msander
 #
+# Version: 1.0  2024-09-30
+#   - declare script as 'stable'
+#   - added feature "ignore trial" and "ignore unsubscribed"
+#
 # Version: 0.6  2023-04-20
 #   prettyfied ha-check
 #
