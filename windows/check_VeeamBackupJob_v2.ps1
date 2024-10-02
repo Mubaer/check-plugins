@@ -106,16 +106,13 @@ $veeamjobs = $veeamjobs + $veeam_S3Jobresult.job_name
 }
 
 
+# jobresult muss noch ersetzt werden
 
 Foreach ($veeamjob in $veeamjobs) {
     if($veeamjob.name -like ""){
     $veeam_jobname = $veeamjob}
     else{
     $veeam_jobname = $veeamjob.name}
-#    $veeam_jobtype = $veeamjob.TypeToString
-#    $veeam_result = $veeamjob.GetLastResult()
-#    $veeam_jobenabled.schedule_enabled = $veeamjob.IsScheduleEnabled
-#    $veeam_state = $veeamjob.GetLastState()
     if (($exclusivejob -and $exclusivejob -contains $veeam_jobname) -or ($ignorejob -and $ignorejob -notcontains $veeam_jobname) -or (!$exclusivejob -and !$ignorejob)) {
         $OutputCount_Jobs = $OutputCount_Jobs + 1
         
@@ -123,22 +120,22 @@ Foreach ($veeamjob in $veeamjobs) {
             $sqlInstanceName = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Veeam\Veeam Backup and Replication\DatabaseConfigurations\MsSql' -Name 'SqlInstanceName').SqlInstanceName
             $sqlDatabaseName = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Veeam\Veeam Backup and Replication\DatabaseConfigurations\MsSql' -Name 'SqlDatabaseName').SqlDatabaseName
             
-            $sqlQueryResults = "SELECT TOP (3) job_name, job_type, job_id, creation_time, end_time, result  FROM [VeeamBackup].[dbo].[Backup.Model.JobSessions] where (job_name like '$veeam_jobname') order by creation_time desc"
+            $sqlQueryResults = "SELECT TOP (3) job_name, job_type, job_id, creation_time, end_time, result, state FROM [VeeamBackup].[dbo].[Backup.Model.JobSessions] where (job_name like '$veeam_jobname') order by creation_time desc"
             $veeam_jobhistory = @(Invoke-SqlCmd -Query $sqlQueryResults -ServerInstance ".\$sqlInstanceName" -Database $sqlDatabaseName)
             $sqlQueryResults = "SELECT schedule_enabled  FROM [VeeamBackup].[dbo].[BJobs] where (name like '$veeam_jobname')"
             $veeam_jobenabled = Invoke-SqlCmd -Query $sqlQueryResults -ServerInstance ".\$sqlInstanceName" -Database $sqlDatabaseName
             }else{
             $veeam_jobhistory =
-            @([pscustomobject]@{job_name="";creation_time="";end_time="";result=""},
-              [pscustomobject]@{job_name="";creation_time="";end_time="";result=""},
-              [pscustomobject]@{job_name="";creation_time="";end_time="";result=""})
+            @([pscustomobject]@{job_name="";creation_time="";end_time="";result="";state=""},
+              [pscustomobject]@{job_name="";creation_time="";end_time="";result="";state=""},
+              [pscustomobject]@{job_name="";creation_time="";end_time="";result="";state=""})
 
             Set-Location 'C:\Program Files\PostgreSQL\15\bin\';
             $env:PGPASSWORD = 'cv1C6cjoM32y4m67paW';
             $cmd = "SELECT job_name, job_type, job_id, creation_time, end_time, result FROM public.\""backup.model.jobsessions\"" where (job_name like '$veeam_jobname') ORDER BY creation_time DESC LIMIT 3;"
             $result = @(.\psql  -U postgres -w -d VeeamBackup -c "$cmd")
             $cmd = "SELECT schedule_enabled  FROM public.\""bjobs\"" where (name like '$veeam_jobname')"
-            $veam_jobenabled = @(.\psql  -U postgres -w -d VeeamBackup -c "$cmd")
+            $veeam_jobenabled = @(.\psql  -U postgres -w -d VeeamBackup -c "$cmd")
             # ToDo: test ob ergebnis einfach so weiterverwendet werden kann
             $veeam_jobhistory[0].job_name = ($result[2] -split "\|",6)[0]
             $veeam_jobhistory[0].creation_time = [datetime]::ParseExact($((($result[2] -split "\| ",6)[3]) -split "\.",2)[0],'yyyy-MM-dd HH:mm:ss',$null)
@@ -154,7 +151,15 @@ Foreach ($veeamjob in $veeamjobs) {
             $veeam_jobhistory[2].creation_time = [datetime]::ParseExact($((($result[4] -split "\| ",6)[3]) -split "\.",2)[0],'yyyy-MM-dd HH:mm:ss',$null)
             $veeam_jobhistory[2].end_time = [datetime]::ParseExact($((($result[4] -split "\| ",6)[4]) -split "\.",2)[0],'yyyy-MM-dd HH:mm:ss',$null)
             $veeam_jobhistory[2].Result = [int]($result[4] -split "\|",6)[5]
+            # Jobstate muss noch ermittelt werden
             }
+
+            switch ($veeam_jobhistory[0].state){
+            -1 {$veeam_state = "Stopped"}
+            5  {$veeam_state = "Waiting/Running"}
+            default {$veeam_state = "unknown"}
+            }
+
             if ($veeam_jobenabled.schedule_enabled -like "True" -or $veeam_jobhistory[0].job_type -eq "18000" -or $veeam_jobhistory[0].job_type -eq "18004") {
             if ($veeam_jobhistory[0].end_time -notlike '*1900*') {
                 $veeam_jobruntime = New-TimeSpan -Start $veeam_jobhistory[0].Creation_Time -End $veeam_jobhistory[0].End_Time
@@ -260,13 +265,13 @@ Foreach ($veeamjob in $veeamjobs) {
             $OutputCount_OK = $OutputCount_OK + 1
         }
         else {
-            if ($veeam_result -eq '0' -or $veeam_state -eq 'Idle') {
-                $OutputContent += "(OK) Job: $veeam_jobname; Last Result: $veeam_result; State: $veeam_state; Scheduled: $veeam_jobenabled.schedule_enabled; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+            if ($veeam_jobhistory[0].Result -eq '0' -or $veeam_state -eq 'Idle') {
+                $OutputContent += "(OK) Job: $veeam_jobname; Last Result: $veeam_jobhistory[0].Result; State: $veeam_state; Scheduled: $veeam_jobenabled.schedule_enabled; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
                 $OutputContent += "`n"
                 $OutputCount_OK = $OutputCount_OK + 1
             }
             else {
-                $OutputContent += "(WARNING) Job: $veeam_jobname; Last Result: $veeam_result; State: $veeam_state; Scheduled: $veeam_jobenabled.schedule_enabled; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+                $OutputContent += "(WARNING) Job: $veeam_jobname; Last Result: $veeam_jobhistory[0].Result; State: $veeam_state; Scheduled: $veeam_jobenabled.schedule_enabled; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
                 $OutputContent += "`n"
                 $OutputCount_WARNING = $OutputCount_WARNING + 1
                 $ExitCode = Set-ExitCode -code 1
