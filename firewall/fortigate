@@ -256,9 +256,9 @@ def access_points( host, token, ap_filter ):
                     loopRC=0
 
                 apRC = update_rc( loopRC, apRC )
-                loopStr = rcstring( loopRC, lineup=1 )
+                loopStr = rcstring( loopRC )
 
-                output += "{} {};{};{};{};{}\n".format( loopStr, apName, apSN, apFirmware, apConnected, apStatus )
+                output += "{} {};{};{};{}\n".format( loopStr, apName, apStatus, apSN, apFirmware )
     else:
         apRC = 0
         output += 'No Accesspoints configured on this firewall'
