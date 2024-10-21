@@ -2,6 +2,9 @@
 #
 # Check Fortigate Firewall via API
 #
+# Version 1.2 (2024-10-10)
+#  added check for Accesspoints
+#
 # Version 1.1 (2024-09-02)
 #  new feature: option -e can be used for licenses
 #
@@ -36,7 +39,7 @@ cli.add_argument('-H', help='Hostname or IP address', required = True)
 cli.add_argument('--token', help='api access token', required = True)
 cli.add_argument('--port', help='tcp port to connect to (default 443)')
 cli.add_argument('--mode', help='select check mode', required = True,
-        choices=['version', 'health', 'license', 'cpu', 'mem', 'ipsec'] )
+        choices=['version', 'health', 'license', 'cpu', 'mem', 'ipsec', 'ap'] )
 cli.add_argument('--warn', help='warning theshold', type=int)
 cli.add_argument('--crit', help='critical theshold', type=int)
 cli.add_argument('-e', '--exclude', help='exclude tunnel from check <conn.-name>:<tserial1>[,<tserial2>]', action = 'append')
@@ -225,6 +228,43 @@ def ipsec( host, token, vpn_filter ):
     output = head + output
     return(output, vpnRC)
 
+def access_points( host, token, ap_filter ):
+    url="https://{}/api/v2/monitor/wifi/managed_ap?access_token={}".format( host, token )
+    jdata=request_json( url )
+
+    output = ''
+    apRC=0
+    apCount=0
+    apCountDiscon=0
+
+    if DEBUG:
+        pp.pprint(jdata.get('results'))
+
+    if len(jdata.get('results')) > 0:
+        for accessPoint in sorted( jdata.get('results'), key=lambda x: x.get('name')):
+                apName      = accessPoint.get('name')
+                apSN        = accessPoint.get('serial')
+                apFirmware  = accessPoint.get('os_version')
+                apStatus    = accessPoint.get('status')
+                apConnected = accessPoint.get('connection_state')
+
+                if apConnected != 'Connected':
+                    apCountDiscon += 1
+                    loopRC=1
+                else:
+                    apCount += 1
+                    loopRC=0
+
+                apRC = update_rc( loopRC, apRC )
+                loopStr = rcstring( loopRC )
+
+                output += "{} {};{};{};{}\n".format( loopStr, apName, apStatus, apSN, apFirmware )
+    else:
+        apRC = 0
+        output += 'No Accesspoints configured on this firewall'
+
+    head = "Accesspoints: {} connected, {} disconnected\n\n".format(apCount, apCountDiscon)
+    return(head + output, apRC)
 
 perfdata=''
 
@@ -243,6 +283,8 @@ elif mode=='license':
     (out_text,rcode)=license(hostname, args.token, warn, crit, list_filter )
 elif mode=='ipsec':
     (out_text,rcode)=ipsec( hostname, args.token, list_filter )
+elif mode=='ap':
+    (out_text,rcode)=access_points( hostname, args.token, list_filter )
 else:
     rcode=3
     out_text='Option "--mode" required'

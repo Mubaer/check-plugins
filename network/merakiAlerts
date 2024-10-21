@@ -2,13 +2,17 @@
 
 #
 # Meraki Cloud Alert checker
-# v1.0, Date:   Tue Sep 12 11:02:14 2023 +0200
+# v1.0, Date:   Tue Sep 12 11:02:14 2023
 #	- first stable version, with filters
 #
 # v2.0, Date: Thu Aug 22 15:59:10 CEST 2024
 #	- bugfix device filter
 #	- added include- and exclude filter arguments
 #	  "-i" and "-e"
+#
+# v2.1, Date: Tue Oct  8 16:33:04 CEST 2024
+#	- improved output of filter information
+#
 
 callpath=`dirname $0`
 LIBPATH=$callpath/../lib
@@ -91,7 +95,7 @@ if [ $filter_mode == 'exclude' ] ; then
 		else
 			type_filter+=" and .type != \"$ftype\""
 		fi
-		output_filter="${exclude_types[@]}"
+		output_filter="${exclude_types[@]/%/,}"
 	done
 elif [ $filter_mode == 'include' ] ; then
 	for ftype in "${include_types[@]}"; do
@@ -173,10 +177,11 @@ else
 		alert_formater='"Category: \"" + .category + "\" | Type: \"" + .type + "\" | Severity: \"" + .severity + "\""'
         formated=$( echo "$device_errors" | jq -r  "$alert_formater" )
         if [ -n "$formated" ] ; then
-			formated+=`echo -e "\n\nAlert filter ($filter_mode): $output_filter"`
+			formated+=`echo -e "\n\nNote: Alert filter is active:\n($filter_mode): $output_filter"`
             exit_status 1 'Alerts found' "$formated"
         else
-            exit_status 0 'No alerts found'
+			detail_out=`echo -e "\nNote: Alert filter is active:\n($filter_mode): $output_filter"`
+            exit_status 0 'No alerts found' "$detail_out"
         fi
 
     else
