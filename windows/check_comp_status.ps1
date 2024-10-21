@@ -170,6 +170,7 @@ $buildnumber = ""
 $trp = ""
 $Sophos = ""
 $Forti = ""
+$Sentinel = ""
 $Defender = ""
 $AVInstalled = ""
 $firewall = ""
@@ -207,10 +208,11 @@ $trp = Test-PendingReboot
 #AV installed?
 $Sophos   = Get-InstalledSoftware -Name "Sophos Endpoint Agent"
 $Forti    = Get-InstalledSoftware -Name "FortiClient"
+$Sentinel    = Get-InstalledSoftware -Name "Sentinel Agent"
 if(Get-Command Get-MpComputerStatus -ErrorAction SilentlyContinue ){
 $Defender = $(Get-MpComputerStatus -ErrorAction SilentlyContinue).AntivirusEnabled
 }    
-if($Sophos -or $Forti -or ($Defender -eq "Running")){
+if($Sophos -or $Forti -or $Sentinel -or ($Defender -eq "Running")){
     
 $AVInstalled = $True
     
