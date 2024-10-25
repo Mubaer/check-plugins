@@ -78,6 +78,7 @@ try {
     }
 }
 
+Import-Module SQLPS
 
 $timeNow = Get-Date
 $OutputContent = "`n"
@@ -89,24 +90,53 @@ $OutputCount_UNKNOWN = 0
 $OutputCount_Jobs = 0
 
 $veeamjobs = Get-VBRJob | select name | Sort LogNameMainPart
-$activeConfig = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Veeam\Veeam Backup and Replication\DatabaseConfigurations' -Name 'SqlActiveConfiguration').SqlActiveConfiguration
+$sqlServerName = $env:COMPUTERNAME
+$sqlInstanceName = "VeeamSQL2016"
+$sqlDatabaseName = "VeeamBackup"
 
-# Find S3 Offload Jobs
+# Check Database type
+$sql_result = Invoke-SqlCmd -Query "SELECT GETDATE() AS TimeOfQuery" -ServerInstance "$sqlServerName\$sqlInstanceName" -Database $sqlDatabaseName -Username "Veeam" -Password "pass4MRstaging"
 
-if ($activeConfig -eq "MsSql") {
-$s3repos = "SELECT name, type FROM [VeeamBackup].[dbo].[BackupRepositories] where type like '10';"
-$resultRepos = @(Invoke-SqlCmd -Query $s3repos -ServerInstance ".\$sqlInstanceName" -Database $sqlDatabaseName)
-$repo_name = $resultRepos[0].name
-$sqlS3Job = "SELECT TOP (1) job_name, job_type FROM [VeeamBackup].[dbo].[Backup.Model.JobSessions] where (job_name like '$repo_name%' and job_type like '18000') order by creation_time desc"
-$veeam_S3Jobresult = @(Invoke-SqlCmd -Query $sqlS3Job -ServerInstance ".\$sqlInstanceName" -Database $sqlDatabaseName)
-$veeamjobs = $veeamjobs + $veeam_S3Jobresult.job_name
+Set-Location 'C:\Program Files\PostgreSQL\15\bin\';
+$env:PGPASSWORD = 'cv1C6cjoM32y4m67paW';
+$cmd = "\l"
+$psql_result = @(.\psql  -U postgres -w -d VeeamBackup -c "$cmd")
+
+if($sql_result){
+$activeConfig = "MSSQL"
+}elseif($psql_result){
+$activeConfig = "PSQL"
 }else{
-# hier muss noch PSQL eingefügt werden
+
+Write-host "Keine Datenbank-Anmeldung möglich"
 
 }
 
 
-# jobresult muss noch ersetzt werden
+# Find S3 Offload Jobs
+
+if ($activeConfig -eq "MSSQL") {
+$s3repos = "SELECT name, type FROM [VeeamBackup].[dbo].[BackupRepositories] where type like '10';"
+$resultRepos = @(Invoke-SqlCmd -Query $s3repos -ServerInstance "$sqlServerName\$sqlInstanceName" -Database $sqlDatabaseName -Username "Veeam" -Password "pass4MRstaging")
+$repo_name = $resultRepos[0].name
+$sqlS3Job = "SELECT TOP (1) job_name, job_type FROM [VeeamBackup].[dbo].[Backup.Model.JobSessions] where (job_name like '$repo_name%' and job_type like '18000') order by creation_time desc"
+$veeam_S3Jobresult = @(Invoke-SqlCmd -Query $sqlS3Job -ServerInstance "$sqlServerName\$sqlInstanceName" -Database $sqlDatabaseName -Username "Veeam" -Password "pass4MRstaging")
+$veeamjobs = $veeamjobs + $veeam_S3Jobresult.job_name
+}elseif($activeConfig -eq "PSQL"){
+# hier muss noch PSQL eingefügt werden
+Set-Location 'C:\Program Files\PostgreSQL\15\bin\';
+$env:PGPASSWORD = 'cv1C6cjoM32y4m67paW';
+$s3repos = "SELECT name, type FROM public.\""backuprepositories\"" where type = '10';"
+$resultRepos = @(.\psql  -U postgres -w -d VeeamBackup -c "$s3repos")
+$repo_name = ($resultRepos[2]  -split "\|",2)[0]
+$sqlS3Job = "SELECT job_name, job_type FROM  public.\""backup.model.jobsessions\"" where (job_name like '$repo_name%' and job_type like '18000') order by creation_time desc limit 1"
+$veeam_S3Jobresult = @(.\psql  -U postgres -w -d VeeamBackup -c "$sqls3job")
+$veeamjobs = $veeamjobs + $veeam_S3Jobresult.job_name #stimmt evt. noch nicht
+}else{
+Write-Host "Keine Verbindung zur DB"
+}
+
+# Check each Job
 
 Foreach ($veeamjob in $veeamjobs) {
     if($veeamjob.name -like ""){
@@ -116,15 +146,12 @@ Foreach ($veeamjob in $veeamjobs) {
     if (($exclusivejob -and $exclusivejob -contains $veeam_jobname) -or ($ignorejob -and $ignorejob -notcontains $veeam_jobname) -or (!$exclusivejob -and !$ignorejob)) {
         $OutputCount_Jobs = $OutputCount_Jobs + 1
         
-        if ($activeConfig -eq "MsSql") {
-            $sqlInstanceName = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Veeam\Veeam Backup and Replication\DatabaseConfigurations\MsSql' -Name 'SqlInstanceName').SqlInstanceName
-            $sqlDatabaseName = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Veeam\Veeam Backup and Replication\DatabaseConfigurations\MsSql' -Name 'SqlDatabaseName').SqlDatabaseName
-            
+        if  ($activeConfig -eq "MSSQL") {
             $sqlQueryResults = "SELECT TOP (3) job_name, job_type, job_id, creation_time, end_time, result, state FROM [VeeamBackup].[dbo].[Backup.Model.JobSessions] where (job_name like '$veeam_jobname') order by creation_time desc"
-            $veeam_jobhistory = @(Invoke-SqlCmd -Query $sqlQueryResults -ServerInstance ".\$sqlInstanceName" -Database $sqlDatabaseName)
+            $veeam_jobhistory = @(Invoke-SqlCmd -Query $sqlQueryResults -ServerInstance "$sqlServerName\$sqlInstanceName" -Database $sqlDatabaseName -Username "Veeam" -Password "pass4MRstaging")
             $sqlQueryResults = "SELECT schedule_enabled  FROM [VeeamBackup].[dbo].[BJobs] where (name like '$veeam_jobname')"
-            $veeam_jobenabled = Invoke-SqlCmd -Query $sqlQueryResults -ServerInstance ".\$sqlInstanceName" -Database $sqlDatabaseName
-            }else{
+            $veeam_jobenabled = Invoke-SqlCmd -Query $sqlQueryResults -ServerInstance "$sqlServerName\$sqlInstanceName" -Database $sqlDatabaseName -Username "Veeam" -Password "pass4MRstaging"
+            }elseif($activeConfig -eq "PSQL"){
             $veeam_jobhistory =
             @([pscustomobject]@{job_name="";creation_time="";end_time="";result="";state=""},
               [pscustomobject]@{job_name="";creation_time="";end_time="";result="";state=""},
@@ -132,26 +159,35 @@ Foreach ($veeamjob in $veeamjobs) {
 
             Set-Location 'C:\Program Files\PostgreSQL\15\bin\';
             $env:PGPASSWORD = 'cv1C6cjoM32y4m67paW';
-            $cmd = "SELECT job_name, job_type, job_id, creation_time, end_time, result FROM public.\""backup.model.jobsessions\"" where (job_name like '$veeam_jobname') ORDER BY creation_time DESC LIMIT 3;"
+            $cmd = "SELECT job_name, job_type, state, creation_time, end_time, result FROM public.\""backup.model.jobsessions\"" where (job_name like '$veeam_jobname') ORDER BY creation_time DESC LIMIT 3;"
+
             $result = @(.\psql  -U postgres -w -d VeeamBackup -c "$cmd")
-            $cmd = "SELECT schedule_enabled  FROM public.\""bjobs\"" where (name like '$veeam_jobname')"
-            $veeam_jobenabled = @(.\psql  -U postgres -w -d VeeamBackup -c "$cmd")
-            # ToDo: test ob ergebnis einfach so weiterverwendet werden kann
+            
             $veeam_jobhistory[0].job_name = ($result[2] -split "\|",6)[0]
             $veeam_jobhistory[0].creation_time = [datetime]::ParseExact($((($result[2] -split "\| ",6)[3]) -split "\.",2)[0],'yyyy-MM-dd HH:mm:ss',$null)
             $veeam_jobhistory[0].end_time = [datetime]::ParseExact($((($result[2] -split "\| ",6)[4]) -split "\.",2)[0],'yyyy-MM-dd HH:mm:ss',$null)
             $veeam_jobhistory[0].Result = [int]($result[2] -split "\|",6)[5]
+            $veeam_jobhistory[0].state = [int]($result[2] -split "\|",6)[2]
 
             $veeam_jobhistory[1].job_name = ($result[3] -split "\|",6)[0]
             $veeam_jobhistory[1].creation_time = [datetime]::ParseExact($((($result[3] -split "\| ",6)[3]) -split "\.",2)[0],'yyyy-MM-dd HH:mm:ss',$null)
             $veeam_jobhistory[1].end_time = [datetime]::ParseExact($((($result[3] -split "\| ",6)[4]) -split "\.",2)[0],'yyyy-MM-dd HH:mm:ss',$null)
             $veeam_jobhistory[1].Result = [int]($result[3] -split "\|",6)[5]
-
+            $veeam_jobhistory[1].state = [int]($result[2] -split "\|",6)[2]
+            
             $veeam_jobhistory[2].job_name = ($result[4] -split "\|",6)[0]
             $veeam_jobhistory[2].creation_time = [datetime]::ParseExact($((($result[4] -split "\| ",6)[3]) -split "\.",2)[0],'yyyy-MM-dd HH:mm:ss',$null)
             $veeam_jobhistory[2].end_time = [datetime]::ParseExact($((($result[4] -split "\| ",6)[4]) -split "\.",2)[0],'yyyy-MM-dd HH:mm:ss',$null)
             $veeam_jobhistory[2].Result = [int]($result[4] -split "\|",6)[5]
-            # Jobstate muss noch ermittelt werden
+            $veeam_jobhistory[2].state = [int]($result[2] -split "\|",6)[2]
+
+
+            $sqlQueryResults = "SELECT name, schedule_enabled FROM public.\""bjobs\"" where (name like '$veeam_jobname');"
+            $result = @(.\psql  -U postgres -w -d VeeamBackup -c "$sqlQueryResults")
+            $veeam_jobenabled = ($result[2] -split "\|",2 )[1]
+
+            }else{
+            Write-Host "Keine Verbindung zur DB"
             }
 
             switch ($veeam_jobhistory[0].state){
@@ -160,7 +196,7 @@ Foreach ($veeamjob in $veeamjobs) {
             default {$veeam_state = "unknown"}
             }
 
-            if ($veeam_jobenabled.schedule_enabled -like "True" -or $veeam_jobhistory[0].job_type -eq "18000" -or $veeam_jobhistory[0].job_type -eq "18004") {
+            if ($veeam_jobenabled.schedule_enabled -like "True" -or $veeam_jobenabled -like " t" -or $veeam_jobhistory[0].job_type -eq "18000" -or $veeam_jobhistory[0].job_type -eq "18004") { # job_type 18000/18004 are S3-Offload-Jobs
             if ($veeam_jobhistory[0].end_time -notlike '*1900*') {
                 $veeam_jobruntime = New-TimeSpan -Start $veeam_jobhistory[0].Creation_Time -End $veeam_jobhistory[0].End_Time
                 if ($veeam_jobhistory[0].Result -eq '0') {
@@ -330,4 +366,4 @@ Write-Host "Running Jobs Runtime Thresholds - WARNING at $runtime_WARNING minute
 Write-Host $OutputContent
 
 $LASTEXITCODE = $ExitCode
-#;exit ($ExitCode)
+;exit ($ExitCode)
