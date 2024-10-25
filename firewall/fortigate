@@ -2,8 +2,14 @@
 #
 # Check Fortigate Firewall via API
 #
+# Version 1.4 (2024-10-23)
+#  new feature: excludes for switches and accesspoints
+#
+# Version 1.3 (2024-10-22)
+#  added check for managed Switches
+#
 # Version 1.2 (2024-10-10)
-#  added check for Accesspoints
+#  added check for managed Accesspoints
 #
 # Version 1.1 (2024-09-02)
 #  new feature: option -e can be used for licenses
@@ -39,10 +45,10 @@ cli.add_argument('-H', help='Hostname or IP address', required = True)
 cli.add_argument('--token', help='api access token', required = True)
 cli.add_argument('--port', help='tcp port to connect to (default 443)')
 cli.add_argument('--mode', help='select check mode', required = True,
-        choices=['version', 'health', 'license', 'cpu', 'mem', 'ipsec', 'ap'] )
+        choices=['version', 'health', 'license', 'cpu', 'mem', 'ipsec', 'ap', 'switch'] )
 cli.add_argument('--warn', help='warning theshold', type=int)
 cli.add_argument('--crit', help='critical theshold', type=int)
-cli.add_argument('-e', '--exclude', help='exclude tunnel from check <conn.-name>:<tserial1>[,<tserial2>]', action = 'append')
+cli.add_argument('-e', '--exclude', help='Exclude filter. For tunnels: <conn.-name>:<tserial1>[,<tserial2>]. For managed devices: S/N', action = 'append')
 cli.add_argument('-d', '--debug', help='enable debugging output', action="store_true")
 args = cli.parse_args()
 
@@ -228,14 +234,16 @@ def ipsec( host, token, vpn_filter ):
     output = head + output
     return(output, vpnRC)
 
-def access_points( host, token, ap_filter ):
+def access_points( host, token, element_filter ):
     url="https://{}/api/v2/monitor/wifi/managed_ap?access_token={}".format( host, token )
     jdata=request_json( url )
 
     output = ''
+    ignoreFlag = ''
     apRC=0
     apCount=0
     apCountDiscon=0
+    apCountIgn=0
 
     if DEBUG:
         pp.pprint(jdata.get('results'))
@@ -255,16 +263,69 @@ def access_points( host, token, ap_filter ):
                     apCount += 1
                     loopRC=0
 
-                apRC = update_rc( loopRC, apRC )
+                # do not update overall status if element is ignored
+                if element_filter and apSN in element_filter:
+                    ignoreFlag = '[ignored]'
+                    apCountIgn += 1
+                else:
+                    ignoreFlag = ''
+                    apRC = update_rc( loopRC, apRC )
+
                 loopStr = rcstring( loopRC )
 
-                output += "{} {};{};{};{}\n".format( loopStr, apName, apStatus, apSN, apFirmware )
+                output += "{} {};{};{};{} {}\n".format( loopStr, apName, apStatus, apSN, apFirmware, ignoreFlag )
     else:
         apRC = 0
         output += 'No Accesspoints configured on this firewall'
 
-    head = "Accesspoints: {} connected, {} disconnected\n\n".format(apCount, apCountDiscon)
+    head = "Accesspoints: {} connected, {} disconnected, {} ignored\n\n".format(apCount, apCountDiscon, apCountIgn)
     return(head + output, apRC)
+
+def switches( host, token, element_filter ):
+    url="https://{}/api/v2/monitor/switch-controller/managed-switch/status?access_token={}".format( host, token )
+    jdata=request_json( url )
+
+    output = ''
+    ignoreFlag = ''
+    switchRC=0
+    switchCount=0
+    switchCountDiscon=0
+    switchCountIgn=0
+
+    if DEBUG:
+        pp.pprint(jdata.get('results'))
+
+    if len(jdata.get('results')) > 0:
+        for switch in sorted( jdata.get('results'), key=lambda x: x.get('name')):
+                switchName      = switch.get('name')
+                switchSN        = switch.get('serial')
+                switchFirmware  = switch.get('os_version')
+                switchStatus    = switch.get('status')
+
+                if switchStatus != 'Connected':
+                    switchCountDiscon += 1
+                    loopRC=1
+                else:
+                    switchCount += 1
+                    loopRC=0
+
+                # do not update overall status if element is ignored
+                if element_filter and switchSN in element_filter:
+                    ignoreFlag = '[ignored]'
+                    switchCountIgn += 1
+                else:
+                    ignoreFlag = ''
+                    switchRC = update_rc( loopRC, switchRC )
+
+                loopStr = rcstring( loopRC )
+
+                output += "{} {};{};{};{} {}\n".format( loopStr, switchName, switchStatus, switchSN, switchFirmware, ignoreFlag )
+    else:
+        switchRC = 0
+        output += 'No Accesspoints configured on this firewall'
+
+    head = "Switches: {} connected, {} disconnected, {} ignored\n\n".format(switchCount, switchCountDiscon, switchCountIgn)
+    return(head + output, switchRC)
 
 perfdata=''
 
@@ -285,6 +346,8 @@ elif mode=='ipsec':
     (out_text,rcode)=ipsec( hostname, args.token, list_filter )
 elif mode=='ap':
     (out_text,rcode)=access_points( hostname, args.token, list_filter )
+elif mode=='switch':
+    (out_text,rcode)=switches( hostname, args.token, list_filter )
 else:
     rcode=3
     out_text='Option "--mode" required'
