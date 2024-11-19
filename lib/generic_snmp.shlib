@@ -60,6 +60,42 @@ function get_snmp {
 	done <<< "$snmpResponse"
 }
 
+function get_snmp_lib {
+	#
+	# Compose snmp command
+	#
+	if [ "$nobulk" ]; then walk=snmpwalk;  else walk=snmpbulkwalk; fi
+	if [ -n "$authuser" ]; then snmpv=3; else snmpv=2c; fi
+
+	snmpcmd="$walk -Onqt -v $snmpv -t $tout -r 3 \
+		$community $authuser $privproto $privpass $seclevel $authproto $authpass \
+		$hostname  $baseOID"
+
+	dbg_msg "debug snmpcmd: $snmpcmd"
+
+
+	# First of all, get the SNMP-Data
+	snmpResponse=$($snmpcmd 2>&1)
+	snmpexit=$?
+
+	dbg_msg "debugsnmpresponse: $snmpResponse"
+
+	if [ $snmpexit -ne 0 ] ; then
+		echo "(UNKNOWN): Problem fetching SNMP data."
+		echo 
+		echo "SNMP Output was: $snmpResponse"
+		exit 3
+	fi
+
+	while read oid value unit
+    do 
+        snmpData[$oid]="$value"
+		if [ -n "$unit" ] ; then
+			snmpUnit[$oid]="$unit"
+		fi
+    done <<< "$snmpResponse"
+}
+
 # gets a bulk of OIDs and processes SNMP-Tables if
 # a value for 'id[index]' is given
 function get_snmp_and_process {
@@ -187,7 +223,7 @@ function process_snmp_noindex {
 			elementList[$element_counter]=$element
 			: $(( element_counter++ ))
 	done
-	dbg_msg "DEBUG []: ${elementList[@]}"
+	dbg_msg "DEBUG [elementList]: ${elementList[@]}"
 }
 
 function process_snmp_namedindex {

@@ -3,22 +3,24 @@ callpath=`dirname $0`
 LIBPATH=$callpath/../lib
 . $LIBPATH/bashPluginFunctions.sh
 
+DEBUG=0
 OPTERR=1
-while getopts "s:k:m:i" OPTION ; do
-    case "$OPTION" in
-    s)  serial="$OPTARG"     ;;
-    k)  apikey="$OPTARG"     ;;
-    m)  meraki_url="$OPTARG" ;;
-    i)  flag_info=1          ;;
-    ?)   exit 3 ;;
-    esac
+while getopts "s:k:m:id" OPTION ; do
+	case "$OPTION" in
+	s)	serial="$OPTARG"	 ;;
+	k)	apikey="$OPTARG"	 ;;
+	m)	meraki_url="$OPTARG" ;;
+	i)	flag_info=1			 ;;
+	d)	DEBUG=1				 ;;
+	?)	exit 3 ;;
+	esac
 done
 
 if [ -z "$serial" -o -z "$apikey" ] ; then
-    RC=3
-    msg="$0: parameter missing"
-    echo -e "${status[$RC]}: $msg"
-    exit $RC
+	RC=3
+	msg="$0: parameter missing"
+	echo -e "${status[$RC]}: $msg"
+	exit $RC
 fi
 
 : ${meraki_url=https://n121.meraki.com/}
@@ -26,46 +28,57 @@ fi
 #
 # Get Network-ID of switch
 #
+if [ $DEBUG -eq 1 ] ; then
+	echo -e "Curl-Command:\n\tcurl -s $meraki_url/api/v1/devices/$serial \
+	-H 'Content-Type: application/json' \
+	-H 'Accept: application/json' \
+	-H \"X-Cisco-Meraki-API-Key: $apikey\"\n"
+fi
+
 curl_response=$( curl -s $meraki_url/api/v1/devices/$serial \
-    -H 'Content-Type: application/json' \
-    -H 'Accept: application/json' \
-    -H "X-Cisco-Meraki-API-Key: $apikey" )
+	-H 'Content-Type: application/json' \
+	-H 'Accept: application/json' \
+	-H "X-Cisco-Meraki-API-Key: $apikey" )
 network=$( echo "$curl_response" | jq -r ".networkId" 2> /dev/null )
+
+if [ $DEBUG -eq 1 ] ; then
+	echo -e "Network-Response:\n\t $curl_response\n"
+fi
 
 # Process and store response for later use
 if [ "$flag_info" == 1 ] ;then
-    device_info=$( echo "$curl_response" | jq -r '.' )
-    device_info=$( echo -e "-- switch info\n$device_info\n-- /switch info" )
+	device_info=$( echo "$curl_response" | jq -r '.' )
+	device_info=$( echo -e "-- switch info\n$device_info\n-- /switch info" )
 fi
 
 jq_rc=$?
 if [ $jq_rc -eq 0 ] ; then
-    case $network in 
-        "") 
-            exit_status 3 "Empty networkID. Probably SN '$serial' does not exist"
-            ;;
-     'null')
-            exit_status 3 'No networkID tag found. Wrong api-key?'
-            ;;
-    esac
+	case $network in
+		"")
+			exit_status 3 "Empty networkID. Probably SN '$serial' does not exist"
+			;;
+	 'null')
+			exit_status 3 'No networkID tag found. Wrong api-key?'
+			;;
+	esac
 else
-    exit_status 3 'could not parse curl response' "$curl_response"
+	exit_status 3 'could not parse curl response' "$curl_response"
 fi
 
 #
 # Get Alets for this switch
 #
-filter=".[] | select(.category == \"Connectivity\" and .type == \"Unreachable device\" ) | .scope.devices[] | select(.serial == \"$serial\") |  .url"
+filter=".[] | select(.category == \"Connectivity\" and .type == \"Unreachable device\" ) | .scope.devices[] | select(.serial == \"$serial\") |	.url"
 response=$( curl -s $meraki_url/api/v1/networks/$network/health/alerts \
-    -H 'Content-Type: application/json' \
-    -H 'Accept: application/json' \
-    -H "X-Cisco-Meraki-API-Key: $apikey" \
-    | jq -r "$filter"
-    )
+	-H 'Content-Type: application/json' \
+	-H 'Accept: application/json' \
+	-H "X-Cisco-Meraki-API-Key: $apikey" \
+	| jq -r "$filter"
+	)
 jq_rc=$?
 
 if [ $jq_rc -eq 0 -a  -z "$response" ] ; then
-    exit_status 0 'Device is reachable; no connectivity alarm found.' "$device_info"
+	exit_status 0 'Device is reachable; no connectivity alarm found.' "$device_info"
 else
-    exit_status 2 "Connectivity alert found for this device ($serial)" "$response\n$device_info"
+	exit_status 2 "Connectivity alert found for this device ($serial)" "$response\n$device_info"
 fi

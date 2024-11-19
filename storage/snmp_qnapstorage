@@ -302,7 +302,7 @@ function storage_byfilter() {
 	loop_state=$( state_string $loop_rcode )
 	# text output
 	outmsg+="$name $(( used_bytes>>20 ))/$(( size_bytes>>20 )) MB (${percent}%) Status: $vol_status; "
-	details+="Usage is $loop_state $name\n"
+	details+="Usage is $loop_state Pool: $name\n"
 	details+="	Size:	$( hr_bytes $size_bytes )\n"
 	details+="	Used:	$( hr_bytes $used_bytes ) (${percent}%)\n"
 	details+="	Status: $vol_status (according to QNAP device)\n\n"
