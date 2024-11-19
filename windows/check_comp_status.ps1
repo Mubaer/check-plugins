@@ -180,8 +180,8 @@ $ruleexists = ""
 $CPUS = $(Get-WmiObject -Class Win32_processor | Measure-Object).count * $(Get-WmiObject -Class Win32_processor | Select-Object NumberOfLogicalProcessors)[0].NumberOfLogicalProcessors
     
 #RAM in GB
-$memory = Get-WMIObject -Class Win32_Computersystem -ErrorAction SilentlyContinue | Select-Object TotalPhysicalMemory
-$RAM = [Math]::Round($memory.TotalPhysicalMemory/ 1GB)
+$memory = [int64](Get-WmiObject Win32_PhysicalMemory  | Measure-Object -Property Capacity -Sum).Sum
+$RAM = ($memory / 1024 / 1024 / 1024)
     
     
 # Diskfree in %
