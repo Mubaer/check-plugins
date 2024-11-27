@@ -61,6 +61,7 @@ source $libdir/convert_and_calc.shlib
 
 function total_free {
 	local name="$1"
+	local perf_name="$2"
 	# Copy values to handy variables
 	local total=${snmpData[${baseOID}.${id[total]}.0]}
 	local free=${snmpData[${baseOID}.${id[free]}.0]}
@@ -78,7 +79,7 @@ function total_free {
 
 	# Calculate percentage
 	outmsg="$name $used_hr of $total_hr used (${relative}%)"
-	perfdata="${relative};$warn;$crit;0;100"
+	perfdata="$perf_name=${relative};$warn;$crit;0;100"
 }
 
 
@@ -103,14 +104,14 @@ case $mode in
 		id[free]=13
 		baseOID='.1.3.6.1.4.1.14823.1.6.1.1.1.1.1'
 		get_snmp_lib
-		total_free Memory:
+		total_free Memory: mem
 	;;
 	disk_arubacppm)
 		id[total]=14
 		id[free]=15
 		baseOID='.1.3.6.1.4.1.14823.1.6.1.1.1.1.1'
 		get_snmp_lib
-		total_free Disk:
+		total_free Disk: disk
 	;;
 	
 	*)
