@@ -280,5 +280,42 @@ function process_snmp_namedindex {
 	dbg_msg "DEBUG [nameMap]: ${nameMap[*]}"
 }
 
+function process_snmp_namedindex_flex {
+	#### building indexes
+	# for tables without an 'index' column, use last OID part as index
+	# same es process_snmp_namedindex, but use whole OID subtree as index
+	#
+
+	# build element index. Last OID-Tree-Level is the index
+	local index_oid
+	for key in ${!snmpData[@]} ; do
+		index_oid="$baseOID.${id[name]}"
+		if [[ $key == "$index_oid".* ]] ; then
+		key=${key/$index_oid\./}
+		elementList+=( $key )
+		fi
+	done
+	dbg_msg "DEBUG [elementList]: ${elementList[*]}"
+
+	# build name map
+	local element
+	local namePart1
+	local namePart2
+	for element in	${elementList[@]}
+	do
+		namePart1="${snmpData[${baseOID}.${id[name]}.$element]}"
+		namePart2="${snmpUnit[${baseOID}.${id[name]}.$element]}"
+		if [ -z "$namePart2" ] ; then
+			nameMap[$namePart1]=$element
+		else
+			nameMap[${namePart1} ${namePart2}]=$element
+		fi
+	done
+	#
+	#
+	#### / building indexes
+	dbg_msg "DEBUG [nameMap]: ${nameMap[*]}"
+	dbg_msg "DEBUG [nameMap]: ${!nameMap[*]}"
+}
 # vim: filetype=bash
 
