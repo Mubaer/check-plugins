@@ -61,6 +61,16 @@ function get_snmp {
 }
 
 function get_snmp_lib {
+	# Function parameters
+	local units=$1
+	case $units in
+		nounit*)
+			units=no ;;
+		# Handling units is the default	
+		*)
+			units=yes ;;
+	esac
+
 	#
 	# Compose snmp command
 	#
@@ -78,26 +88,35 @@ function get_snmp_lib {
 	snmpResponse=$($snmpcmd 2>&1)
 	snmpexit=$?
 
-	dbg_msg "debugsnmpresponse: $snmpResponse"
+	dbg_msg "debugsnmpresponse:\n$snmpResponse"
 
 	if [ $snmpexit -ne 0 ] ; then
 		echo "(UNKNOWN): Problem fetching SNMP data."
-		echo 
+		echo
 		echo "SNMP Output was: $snmpResponse"
 		exit 3
 	fi
 
-	while read oid value unit
-    do 
-        snmpData[$oid]="$value"
-		if [ -n "$unit" ] ; then
-			snmpUnit[$oid]="$unit"
-		fi
-    done <<< "$snmpResponse"
+	if [ "$units" == 'yes' ] ; then
+		# Treat value after first space as unit
+		while read oid value unit
+		do
+			snmpData[$oid]="$value"
+			if [ -n "$unit" ] ; then
+				snmpUnit[$oid]="$unit"
+			fi
+		done <<< "$snmpResponse"
+	else
+		# Put everything into "value"
+		while read oid value
+		do
+			snmpData[$oid]="$value"
+		done <<< "$snmpResponse"
+	fi
 }
 
 # gets a bulk of OIDs and processes SNMP-Tables if
-# a value for 'id[index]' is given
+# a value for 'id[index]' and 'id[name]' is given
 function get_snmp_and_process {
 	#
 	# Compose snmp command
@@ -190,7 +209,7 @@ function get_bulk_snmp {
 
 function process_snmp_index {
 	#### building indexes
-	# required index[id] and index[name] set
+	# required id[index] and id[name] set
 	#
 
 	# build element index
@@ -209,7 +228,8 @@ function process_snmp_index {
 	#
 	#
 	#### / building indexes
-	dbg_msg "DEBUG [nameMap]: ${nameMap[@]}"
+	dbg_msg "DEBUG values [nameMap]: ${nameMap[*]}"
+	dbg_msg "DEBUG keys   [nameMap]: ${!nameMap[*]}"
 }
 
 function process_snmp_noindex {
