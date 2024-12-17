@@ -155,6 +155,20 @@ function fan_table {
 	done
 }
 
+function test_errors {
+	local prefix=$1
+	local object=$2
+
+	outmsg="$prefix"
+	case ${snmpData[err]} in
+		nosuchobject)
+			outmsg+="Device does not have any $object."
+			glob_rcode=0
+			trigger_exit
+			;;
+	esac
+}
+
 #
 # MAIN
 #
@@ -184,6 +198,7 @@ case $mode in
 		id[speed]=8
 		id[state]=10
 		get_snmp_lib
+		test_errors 'Fans: ' 'fans'
 		process_snmp_namedindex_flex
 		fan_table .
 	;;
