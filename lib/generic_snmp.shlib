@@ -97,6 +97,10 @@ function get_snmp_lib {
 		exit 3
 	fi
 
+	if [[ "$snmpResponse" =~ 'No Such Object available' ]] ;then
+		snmpData[err]='nosuchobject'
+	fi
+
 	if [ "$units" == 'yes' ] ; then
 		# Treat value after first space as unit
 		while read oid value unit
