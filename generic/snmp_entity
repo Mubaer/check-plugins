@@ -8,6 +8,9 @@
 #
 # Author: Xin Qu
 #
+# Version: 1.2.1 2024-12-20
+#	finalized ENTITY-MIB information
+#
 # Version: 1.2 2024-12-20
 #	added support for ENTITY-MIB information
 #	(introduced for Aruba CX)
@@ -293,30 +296,33 @@ function check_cisco_element_status {
 function get_entitiy_info {
 	local class=$1
 	local outPrefix=$2
+	local key
+	local keyorder
+	local ename
 	local -A n2oid
 
 	n2oid=( \
-		[name]=7       \
-		[descr]=2      \
-		[vendortype]=3 \
-		[hardrev]=8    \
-		[firmrev]=9    \
-		[softrev]=10   \
-		[serial]=11    \
-		[model]=13     \
+		[Name]=7       \
+		[Descr.]=2      \
+		#[vendortype]=3 \
+		[HW-Rev.]=8    \
+		[FW-Rev.]=9    \
+		[SW-Rev.]=10   \
+		[S/N]=11    \
+		[Model]=13     \
 	)
 
+	keyorder=( Descr. HW-Rev. FW-Rev. SW-Rev. S/N Model)
+
 	for element in ${outElements[@]} ; do
-		# get element name
-		eName="${snmpData[$baseOID.${id[name]}.$element]}"
-		eDesc="${snmpData[$baseOID.${n2oid[descr]}.$element]}"
-		eSerial="${snmpData[$baseOID.${n2oid[serial]}.$element]}"
-		# remove quotes
-		eName=${eName//\"/}
-		echo "name: $eName"
-		echo "desc: $eDesc"
-		echo "seri: $eSerial"
+		# remove quotes from 'Name'
+		details+="${snmpData[$baseOID.${n2oid[Name]}.$element]//\"/}:\n"
+		for key in ${keyorder[@]} ; do
+			details+="\t$key: ${snmpData[$baseOID.${n2oid[$key]}.$element]}\n"
+		done
+		details+="\n"
 	done
+
 }
 
 function map_cisco_errorLeaf {
