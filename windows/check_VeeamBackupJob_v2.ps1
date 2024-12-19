@@ -114,7 +114,7 @@ Write-host "Keine Datenbank-Anmeldung möglich"
 
 
 # Find S3 Offload Jobs
-
+# Achtung: falls keien Jibs exisieren wird ein leerer Eintrag erzeugt, der nur stört. Vorher prüfen!
 if ($activeConfig -eq "MSSQL") {
 $s3repos = "SELECT name, type FROM [VeeamBackup].[dbo].[BackupRepositories] where type like '10';"
 $resultRepos = @(Invoke-SqlCmd -Query $s3repos -ServerInstance "$sqlServerName\$sqlInstanceName" -Database $sqlDatabaseName -Username "Veeam" -Password "pass4MRstaging")
@@ -135,6 +135,11 @@ $veeamjobs = $veeamjobs + $veeam_S3Jobresult.job_name #stimmt evt. noch nicht
 }else{
 Write-Host "Keine Verbindung zur DB"
 }
+
+# Find Tape-Jobs
+
+# Find Agent-Jobs
+
 
 # Check each Job
 
