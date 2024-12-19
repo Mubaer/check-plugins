@@ -61,6 +61,16 @@ function get_snmp {
 }
 
 function get_snmp_lib {
+	# Function parameters
+	local units=$1
+	case $units in
+		nounit*)
+			units=no ;;
+		# Handling units is the default	
+		*)
+			units=yes ;;
+	esac
+
 	#
 	# Compose snmp command
 	#
@@ -78,26 +88,39 @@ function get_snmp_lib {
 	snmpResponse=$($snmpcmd 2>&1)
 	snmpexit=$?
 
-	dbg_msg "debugsnmpresponse: $snmpResponse"
+	dbg_msg "debugsnmpresponse:\n$snmpResponse"
 
 	if [ $snmpexit -ne 0 ] ; then
 		echo "(UNKNOWN): Problem fetching SNMP data."
-		echo 
+		echo
 		echo "SNMP Output was: $snmpResponse"
 		exit 3
 	fi
 
-	while read oid value unit
-    do 
-        snmpData[$oid]="$value"
-		if [ -n "$unit" ] ; then
-			snmpUnit[$oid]="$unit"
-		fi
-    done <<< "$snmpResponse"
+	if [[ "$snmpResponse" =~ 'No Such Object available' ]] ;then
+		snmpData[err]='nosuchobject'
+	fi
+
+	if [ "$units" == 'yes' ] ; then
+		# Treat value after first space as unit
+		while read oid value unit
+		do
+			snmpData[$oid]="$value"
+			if [ -n "$unit" ] ; then
+				snmpUnit[$oid]="$unit"
+			fi
+		done <<< "$snmpResponse"
+	else
+		# Put everything into "value"
+		while read oid value
+		do
+			snmpData[$oid]="$value"
+		done <<< "$snmpResponse"
+	fi
 }
 
 # gets a bulk of OIDs and processes SNMP-Tables if
-# a value for 'id[index]' is given
+# a value for 'id[index]' and 'id[name]' is given
 function get_snmp_and_process {
 	#
 	# Compose snmp command
@@ -190,7 +213,7 @@ function get_bulk_snmp {
 
 function process_snmp_index {
 	#### building indexes
-	# required index[id] and index[name] set
+	# required id[index] and id[name] set
 	#
 
 	# build element index
@@ -209,7 +232,8 @@ function process_snmp_index {
 	#
 	#
 	#### / building indexes
-	dbg_msg "DEBUG [nameMap]: ${nameMap[@]}"
+	dbg_msg "DEBUG values [nameMap]: ${nameMap[*]}"
+	dbg_msg "DEBUG keys   [nameMap]: ${!nameMap[*]}"
 }
 
 function process_snmp_noindex {
@@ -260,5 +284,42 @@ function process_snmp_namedindex {
 	dbg_msg "DEBUG [nameMap]: ${nameMap[*]}"
 }
 
+function process_snmp_namedindex_flex {
+	#### building indexes
+	# for tables without an 'index' column, use last OID part as index
+	# same es process_snmp_namedindex, but use whole OID subtree as index
+	#
+
+	# build element index. Last OID-Tree-Level is the index
+	local index_oid
+	for key in ${!snmpData[@]} ; do
+		index_oid="$baseOID.${id[name]}"
+		if [[ $key == "$index_oid".* ]] ; then
+		key=${key/$index_oid\./}
+		elementList+=( $key )
+		fi
+	done
+	dbg_msg "DEBUG [elementList]: ${elementList[*]}"
+
+	# build name map
+	local element
+	local namePart1
+	local namePart2
+	for element in	${elementList[@]}
+	do
+		namePart1="${snmpData[${baseOID}.${id[name]}.$element]}"
+		namePart2="${snmpUnit[${baseOID}.${id[name]}.$element]}"
+		if [ -z "$namePart2" ] ; then
+			nameMap[$namePart1]=$element
+		else
+			nameMap[${namePart1} ${namePart2}]=$element
+		fi
+	done
+	#
+	#
+	#### / building indexes
+	dbg_msg "DEBUG [nameMap]: ${nameMap[*]}"
+	dbg_msg "DEBUG [nameMap]: ${!nameMap[*]}"
+}
 # vim: filetype=bash
 

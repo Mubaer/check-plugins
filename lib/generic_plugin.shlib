@@ -106,7 +106,7 @@ function trigger_exit {
 # print a debug message to stderr
 function dbg_msg {
 	if [ "$debug" ] ; then
-		>&2 echo "DEBUG: $1"
+		>&2 echo -e "DEBUG: $1"
 	fi
 }
 
