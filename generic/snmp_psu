@@ -90,7 +90,7 @@ function status_errormap_arubacx {
 	local -a map
 	map=( \
 		[1]=0 \
-		[2]=1 \
+		[2]=0 \
 		[3]=2 \
 		[4]=2 \
 		[5]=2 \
@@ -124,11 +124,16 @@ function psu_table {
 	local productName
 	local psuState
 	local psuStateString
+	# State is OK in case we don't get state information from device
+	local stateByState=0
+	local stateByPower
 	local maxPower
 	local curPower
 	local relPower
 	local numFailures
 	local detail_line
+	local loopState=0
+	local loopStateString
 
     for element in  ${outElements[@]}
     do
@@ -139,46 +144,76 @@ function psu_table {
 		name=${name/% /}
 
 		outmsg+="$name:"
-		detail_line="$name:"
+		detail_line="$name:\n"
+
+		# enter state handling when defined
 		if [ -n "${id[state]}" ] ; then
 			psuState=${snmpData[${baseOID}.${id[state]}.$element]}
 			psuStateString=$( status_stringmap_$mode $psuState )
-			state_bystatus=$( status_errormap_$mode $psuState )
-			state_detail_string=$( state_string $state_bystatus )
-			#outmsg+=", State: $state_detail_string"
-			detail_line+=", State: $psuStateString"
+
+			stateByState=$( status_errormap_$mode $psuState )
+			stateByStateString=$( state_string $stateByState )
+
+			outmsg+=", State: $psuStateString"
+			detail_line+="\tState: $psuStateString\n"
+			# remember for later
 		fi
 
+		# enter power comsumptin handling when defined
 		if [ -n "${id[maxpower]}" -a -n "${id[curpower]}" ] ; then
 			maxPower=${snmpData[${baseOID}.${id[maxpower]}.$element]}
 			curPower=${snmpData[${baseOID}.${id[curpower]}.$element]}
+
+			# only PSUs with maxPower != 0
 			if [ $maxPower -ne 0 ]  ; then
 				relPower=$( percent $maxPower $curPower )
 				outmsg+=" Power ${relPower}%"
-				detail_line+=", Power: ${curPower}W of ${maxPower}W (${relPower}%)"
+				detail_line+="\tPower: ${curPower}W of ${maxPower}W (${relPower}%)\n"
 			fi
-			#if [ -n "$crit" -a -n "$warn" ] ; then
-				#state_byspeed=$( calc_state $speed $warn $crit 'low' )
-			#fi
-			state_detail_string=$( state_string $state_byspeed )
-			#detail_line+=$( printf "%5d RPM" $speed)
+			# only calc thresholds when a stateByState is "OK" (0) AND maxPower != 0
+			if [ "$stateByState" -eq 0 -a $maxPower -ne 0 ]  ; then
+				if [ -n "$crit" -a -n "$warn" ] ; then
+					stateByPower=$( calc_state $relPower $warn $crit )
+				fi
+			else
+				stateByPower=0
+			fi
+			# perfdata only for maxPower != 0	
+			if [ $maxPower -ne 0 ]  ; then
+				perfdata+="$name=$relPower;$warn;$crit "
+			fi
 		fi
 
 
-		# prefer systems status calculation over speed thresholds
-		#if [ -n "${id[state]}" ] ; then
-		#	state_detail_string=$( state_string $state_bystatus )
-		#	glob_rcode=$( set_globalstate $state_bystatus )
-		#else
-		#	state_detail_string=$( state_string $state_byspeed )
-		#	glob_rcode=$( set_globalstate $state_byspeed )
-		#fi
-		detail_line="$state_detail_string $detail_line"
+		if [ -n "${id[serial]}" ] ;then
+			local psuSerial=${snmpData[${baseOID}.${id[serial]}.$element]}
+			detail_line+="\tS/N: $psuSerial\n"
+		fi
+		if [ -n "${id[prodname]}" ] ;then
+			local psuProd=${snmpData[${baseOID}.${id[prodname]}.$element]}
+			detail_line+="\tProduct: $psuProd\n"
+		fi
 
+
+
+		# Status of power comsumptions 'wins'
+		if [ -n "$stateByPower" ] ; then
+			if [  "$stateByPower" -gt "$stateByState" ] ;  then
+				loopState=$stateByPower
+			else
+				loopState=$stateByState
+			fi
+		fi
+
+		loopStateString=$( state_string $loopState n n )
+		# Prepend PSU status to line
+		detail_line="$loopStateString $detail_line"
+
+		# update global state
+		glob_rcode=$( set_globalstate $loopState )
 		# merge everything together
 		outmsg+="; "
 		details+="$detail_line\n"
-		perfdata+="$name=$speed;$warn;$crit "
 	done
 }
 
@@ -203,6 +238,8 @@ case $mode in
 		id[curpower]=7
 		id[maxpower]=8
 		id[state]=11
+		id[prodname]=5
+		id[serial]=6
 		get_snmp_lib
 		test_errors 'PSUs: ' 'PSUs'
 		process_snmp_namedindex_flex
