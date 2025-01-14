@@ -74,6 +74,7 @@ function set_globalstate() {
 function state_string() {
 	local rcode=$1
 	local align=${2:-n}
+	local colon=${3:-c}
 	local string
 
 	if [ "$align" == 'n' ] ; then
@@ -90,6 +91,9 @@ function state_string() {
 			2) string='(CRITICAL):' ;;
 			3) string='(UNKNOWN): ' ;;
 		esac
+	fi
+	if [ $colon != 'c' ] ; then
+		string=${string/:}
 	fi
 	echo "$string"
 }
