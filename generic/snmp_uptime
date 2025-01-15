@@ -153,6 +153,11 @@ case $mode in
 		baseOID='.1.3.6.1.4.1.14823.1.6.1.1.1.1.1.17.0'
 
 	;;
+	# Dell Storage PowerVault ME5
+	powervault)
+		baseOID='.1.3.6.1.3.94.1.3.0'
+	;;
+
 	*)
 		echo "(UNKNOWN): mode '-m $mode' not known" ; exit 3 ;;
 esac
