@@ -21,6 +21,7 @@
 
 param([String[]]$exclusivejob, [String[]]$ignorejob, [Switch]$runtime, [Int]$runtime_WARNING = 1440, [Int]$runtime_CRITICAL = 2880)
 
+$version = "2.0.2"
 $ErrorActionPreference = "SilentlyContinue"
 $WarningPreference = "SilentlyContinue"
 
@@ -376,6 +377,9 @@ $OutputContent += "`n"
 $OutputContent += "Veeam.Backup.Shell=$VeeamBackupShell"
 $OutputContent += "`n"
 $OutputContent += "Database Type: " + $activeConfig
+$OutputContent += "`n"
+$OutputContent += "Check version: " + $version
+
 
 Write-Host "(OK): $OutputCount_OK; (WARNING): $OutputCount_WARNING; (CRITICAL): $OutputCount_CRITICAL; (PENDING): $OutputCount_PENDING; Jobs in Check: $OutputCount_Jobs"
 Write-Host ""
@@ -383,4 +387,4 @@ Write-Host "Running Jobs Runtime Thresholds - WARNING at $runtime_WARNING minute
 Write-Host $OutputContent
 
 $LASTEXITCODE = $ExitCode
-#;exit ($ExitCode)
+;exit ($ExitCode)
