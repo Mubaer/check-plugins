@@ -1,6 +1,6 @@
 ###  Icinga Veeam BackupJob Check   ###
 ###   (c) MR-Daten - Charly Kupke   ###
-###           Version 2.4           ###
+###   Erweiterung: Peter Ziegler    ###
 ### ### ### ### ### ### ### ### ### ###
 
 ### Usage ###
@@ -21,7 +21,7 @@
 
 param([String[]]$exclusivejob, [String[]]$ignorejob, [Switch]$runtime, [Int]$runtime_WARNING = 1440, [Int]$runtime_CRITICAL = 2880)
 
-$version = "2.0.2"
+$version = "2.2.0"
 $ErrorActionPreference = "SilentlyContinue"
 $WarningPreference = "SilentlyContinue"
 
@@ -215,6 +215,13 @@ Foreach ($veeamjob in $veeamjobs) {
             }
 
             if ($veeam_jobenabled.schedule_enabled -like "True" -or $veeam_jobenabled -like " t" -or $veeam_jobhistory[0].job_type -eq "18000" -or $veeam_jobhistory[0].job_type -eq "18004") { # job_type 18000/18004 are S3-Offload-Jobs
+            
+            if ($veeam_jobhistory[0].job_name -like "(0 Zeilen)" -or !($veeam_jobhistory)){
+            $OutputContent += "(UNKNOWN) Job: $veeam_jobname; No entries in Database"
+            $OutputContent += "`n"
+            $OutputCount_OK = $OutputCount_OK + 1
+            }else{
+            
             if ($veeam_jobhistory[0].end_time -notlike '*1900*') {
                 $veeam_jobruntime = New-TimeSpan -Start $veeam_jobhistory[0].Creation_Time -End $veeam_jobhistory[0].End_Time
                 if ($veeam_jobhistory[0].Result -eq '0') {
@@ -313,6 +320,7 @@ Foreach ($veeamjob in $veeamjobs) {
                 }
             }
         }
+        }
         elseif (!($veeam_jobenabled.schedule_enabled)) {
             $OutputContent += "(OK) Job: $veeam_jobname; Scheduled: disabled"
             $OutputContent += "`n"
@@ -387,4 +395,4 @@ Write-Host "Running Jobs Runtime Thresholds - WARNING at $runtime_WARNING minute
 Write-Host $OutputContent
 
 $LASTEXITCODE = $ExitCode
-;exit ($ExitCode)
+#;exit ($ExitCode)
