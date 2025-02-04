@@ -1,4 +1,4 @@
-"""MITO query functions."""
+"""generic API request functions."""
 
 import requests
 import logging
