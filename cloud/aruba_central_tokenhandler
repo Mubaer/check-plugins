@@ -3,28 +3,36 @@
 # Run checks against HPE Aruba Networking Central
 #
 #
-# Version 0.1
+# Version 0.2
 #
 import os, sys
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 import argparse
 import pprint
 import pickle
-from datetime import *
-from lib.jsonapi import *
+import requests
+import logging
+import time
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from lib.generic_plugin import *
 
 # parse command line parameters
-
 cli = argparse.ArgumentParser \
     (description='Maintain Aruba Central token')
 
-cli.add_argument('--id', help='Client Id', required = True)
-cli.add_argument('--secret', help='Client Secret', required = True)
-cli.add_argument('--refresh-token', help='initial refresh token', required = False)
-cli.add_argument('--baseurl', help='base URL for our acocunt', required = False)
-cli.add_argument('--dbdir', help='directory where keys are stored', required = False)
-cli.add_argument('-d', '--debug', help='enable debugging output', action="store_true")
+cli.add_argument('--id',
+        help='Client Id',required = True)
+cli.add_argument('--secret',
+        help='Client Secret', required = True)
+cli.add_argument('--token',
+		help='initial refresh token', required = True)
+cli.add_argument('--baseurl',
+		help='base URL for our acocunt', required = False)
+cli.add_argument('--dbdir',
+		help='directory where keys are stored', required = False)
+cli.add_argument('--minttl', type=int,
+		help='minimum TTL for token before it is renewed', required = False)
+cli.add_argument('-d', '--debug', 
+        help='enable debugging output', action="store_true")
 args = cli.parse_args()
 
 #### init vars
@@ -35,88 +43,132 @@ detail=''
 perfdata=''
 
 # arguments / settings
-baseURL      = args.baseurl or 'https://apigw-eucentral2.central.arubanetworks.com'
-dbDir        = args.dbdir or '/var/spool/icinga2/tmp'
+baseURL     = args.baseurl or 'https://apigw-eucentral2.central.arubanetworks.com'
+dbDir       = args.dbdir or '/var/spool/icinga2/tmp'
+minttl      = args.minttl or 1800 #( 30mins )
 # Strip trailing /
 dbDir.rstrip('/')
 clientId     = args.id
 clientSecret = args.secret
+refreshToken = args.token
 DEBUG        = args.debug
 if DEBUG: pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
 
-# functions
-def refreshToken( baseURL, clientId, clientSecret, refreshToken):
-    url="{}/oauth2/token?client_id={}&client_secret={}&grant_type=refresh_token&refresh_token={}".format(baseURL, clientId, clientSecret, refreshToken)
-    jdata=request_json( url )
+#-----------------------------------------------------------------------
+# Functions
+#-----------------------------------------------------------------------
 
+# Handle API Request
+def apiRequest( url, method ):
+    result = None
+
+    if method == 'post':
+        resp = requests.post( url )
+    else:
+        resp = requests.get( url )
+
+    if resp:
+        result = resp.json()
+    else:
+        logging.error("something went wrong\n\nRESP_HEADER\n{}\nRESP_TEXT\n{}".format( \
+                resp.headers, resp.text ))
+    return(result)
+# Refresh Token
+def renewToken( baseURL, clientId, clientSecret, refreshToken):
+
+    url="{}/oauth2/token?client_id={}&client_secret={}&grant_type=refresh_token&refresh_token={}".format(baseURL, clientId, clientSecret, refreshToken)
+
+    jdata=apiRequest( url, 'post' )
+
+    if not jdata:
+        print('Could not get data, aborting')
+        sys.exit(1)
+
+    tokenData = { 
+            'access' : jdata.get('access_token'),
+            'refresh' : jdata.get('refresh_token'),
+            'expires' : jdata.get('expires_in')
+     }
+    return tokenData
+
+# Write token file
 def writeFile(fpath, data):
     try:
         tokenCache = open(fpath, 'wb')
     except PermissionError as error:
         print('Pls. check directory permissions!', error)
+        sys.exit(11)
     except:
         print ('something failed (exeption while writing file)')
+        sys.exit(11)
     else:
-        print( 'file opened!!' )
         pickle.dump(data, tokenCache)
         tokenCache.close()
 
-    print("printing this to {}:".format( fpath ))
-    pp.pprint(data)
+def refreshTokenFile (dbDir, baseURL,
+                  clientId, clientSecret, refreshToken ):
+    # Checking write access
+    if not os.access(dbDir, os.W_OK):
+        print('UNKNOWN: error: can not write to dbdir')
+        sys.exit(3)
+
+    tokenFilePath = dbDir + '/' + clientId + '.token'
+
+    # get new token
+    tokenData = renewToken( baseURL, clientId, clientSecret, refreshToken )
+    # add current timestamp
+    tokenData['file_created'] = int(time.time())
+
+    if DEBUG:
+        print('new token data is:')
+        pp.pprint( tokenData )
+        print('------------------')
+    writeFile( tokenFilePath, tokenData )
+    return True
 
 
 #-----------------------------------------------------------------------
 #                                 MAIN
 #-----------------------------------------------------------------------
 
-# ------------------ Doc ----------------
-# Fileformat:
-# <type>;<create timestamp>;<value>
-# where type can be access, refresh
-
+#-----------------------------------------------------------------------
+# try to read file
 tokenFilePath = dbDir + '/' + clientId + '.token'
-
-# dummy data
-testdata = {
-        'access': {
-            'created': 123456787,
-            'value': 'accessasdfasdfasdf'
-            },
-        'refresh': {
-            'created': 123456789,
-            'value': 'accessasdfasdfasdf'
-            }
-        }
-# /dummy data
-
 try:
     tokenCache = open(tokenFilePath, 'rb')
-except FileNotFoundError:
-    print('file not found :-(')
 
-    writeFile( tokenFilePath, testdata )
-    # refreshing token
-    # saving accesstoken, refreshtoken
+except FileNotFoundError:
+    refreshTokenFile( dbDir, baseURL, clientId, clientSecret, refreshToken )
+except PermissionError as e:
+    print('internal error: no permission to access DB file')
 except:
-    print('exception while opening file')
+    print('exception while opening file for reading')
 
 else:
     try:
+        if DEBUG: print('pickle load')
         filedata = pickle.load(tokenCache)
-    except EOFError as error:
-        print('file is invalid, trying to write a new one')
-        writeFile( tokenFilePath, testdata )
     except:
         print('exception while reading file contents')
-    # reading token
-    # check for validity
-    # if older than 1h, refresh
+        # issue an UNKNOWN here, suggest to delete the file
     else:
-        print('reading data worked!')
-        pp.pprint( filedata)
-
-
-
+        print('calculate expiration time')
+        expire_time = filedata['file_created'] + filedata['expires']
+        ttl = expire_time - int(time.time())
+        if DEBUG:
+            print('reading data finished!')
+            pp.pprint( filedata )
+        if ttl > minttl:
+            out_text = 'Token valid, expires in {} seconds'.format( ttl )
+        else:
+            refresh_try = refreshTokenFile(
+                    dbDir, baseURL, clientId, clientSecret, refreshToken )
+            if refresh_try:
+                rcode=0
+                out_text='Successfully renewed token'
+            else:
+                rcode=1
+                out_text='Problem while renewing token'
 
 #Finally, print check output and exit with rcode
 if not perfdata:
