@@ -3,7 +3,8 @@
 # Run checks against HPE Aruba Networking Central
 #
 #
-# Version 0.3
+# Version 0.4 2025-02-06
+#    first version for production
 #
 import os, sys
 import argparse
