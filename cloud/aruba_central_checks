@@ -2,346 +2,124 @@
 #
 # Run checks against HPE Aruba Networking Central
 #
-# Version 0.1
+# Version 0.1 2025-02-07
+#    test version
 #
 import os, sys
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 import argparse
-import pprint
-from datetime import *
-from lib.jsonapi import *
+import pickle
+import requests
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from lib.generic_plugin import *
 
-
-# # # # # # # # # # # # # # # # # # # # # # # # # 
-# MAIN
-# # # # # # # # # # # # # # # # # # # # # # # # # 
-
 # parse command line parameters
-
 cli = argparse.ArgumentParser \
-    (description='Check Sophos Cloud Services for Endpoint-Status or Alerts')
+	(description='Maintain Aruba Central token')
 
-cli.add_argument('-H', help='Hostname or IP address', required = True)
-cli.add_argument('--token', help='api access token', required = True)
-cli.add_argument('--refresh-token', help='api access token', required = True)
-cli.add_argument('--baseurl', help='base URL for our acocunt', required = False)
-cli.add_argument('--mode', help='select check mode', required = True,
-        choices=['aps' ])
-#cli.add_argument('--warn', help='warning theshold', type=int)
-#cli.add_argument('--crit', help='critical theshold', type=int)
-cli.add_argument('-e', '--exclude', help='Exclude filter by serial number', action = 'append')
-cli.add_argument('-d', '--debug', help='enable debugging output', action="store_true")
+cli.add_argument('--id',
+        help='Client Id',required = True)
+cli.add_argument('--mode',
+		help='check mode: wlanap | ...', required = True )
+cli.add_argument('--baseurl',
+		help='base URL for our acocunt', required = False)
+cli.add_argument('--dbdir',
+		help='directory where keys are stored', required = False)
+cli.add_argument('-d', '--debug', 
+		help='enable debugging output', action="store_true")
 args = cli.parse_args()
 
-# init vars
+#### init vars
+# check output
 rcode=0
 out_text=''
 detail=''
-mode=args.mode
-list_filter=args.exclude
-baseURL= args.baseurl or 'https://apigw-eucentral2.central.arubanetworks.com'
-DEBUG=args.debug
-
-if DEBUG: pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
-
-def accessPointList( host, token):
-    url=
-def sysinfo( host, token ):
-    url="https://{}/api/v2/monitor/system/status/?access_token={}".format( host, token )
-    jdata=request_json( url )
-
-    output="Hostname: {}, Model: {}, Version {}, Serial: {}".format( \
-        jdata.get('results').get('hostname'), \
-        jdata.get('results').get('model'), jdata.get('version'), \
-        jdata.get('serial') )
-    return output
-
-def resource( host, token, res, warn, crit):
-    interval='10'
-    intname="{}-min".format(interval)
-    url="https://{}/api/v2/monitor/system/resource/usage?access_token={}&interval={}-min&resource={}".format(\
-            host, token, interval, res )
-
-    jdata=request_json( url )
-    output=''
-    perfdata=''
-    ind=0
-    rcode = 0
-    for resobj in jdata['results'][res]:
-        avg = str( resobj['historical'][intname]['average'] )
-        # Convert to int
-        avg_int = int(avg)
-
-        # Check threshold and update global rcode
-        loop_rc = check_threshold( avg_int, warn, crit )
-        rcode = update_rc( loop_rc, rcode )
-
-        output+="{}[{}]: {}% ".format(res, ind, avg)
-        perfdata+="{}[{}]={}%;{};{};0;100 ".format(res, ind, avg, warn, crit)
-        ind += 1
-
-    output+="  ({} minute average)".format(interval)
-    return (output, rcode, perfdata)
-
-def license( host, token, warn, crit, lic_filter):
-    url="https://{}/api/v2/monitor/license/status/?access_token={}".format( host, token )
-    jdata=request_json( url )
-    if DEBUG:
-        pp.pprint(jdata.get('results'))
-
-    # get longest key name
-    longest = len( max( jdata.get('results').keys(), key=len) )
-
-    rcode=0
-    output=''
-    details=''
-    status_count={}
-    for lic in sorted( jdata.get('results').keys() ):
-        l_status  = jdata.get('results').get(lic).get('status')
-
-        # --> do not handle this license status
-        if l_status == 'no_license' or l_status == None: continue
-
-        if l_status not in status_count:
-            status_count[l_status]=1
-        else:
-            status_count[l_status]+=1
-
-        l_expires = jdata.get('results').get(lic).get('expires')
-
-        now = datetime.now(timezone.utc)
-        if l_expires != None:
-            exp_date = datetime.fromtimestamp( l_expires, timezone.utc )
-            exp_period = ( exp_date - now ).days
-            details += "{:<{len}}| {:^17}| expires in {} days".format( \
-                    lic+':', l_status, exp_period, len=longest )
-
-            if lic_filter and lic in lic_filter:
-                loop_rc = 0
-                details += " [ignored!]\n"
-            else:
-                loop_rc = check_threshold( exp_period, warn, crit, 'lt' )
-                details += "\n"
-
-            rcode = update_rc( loop_rc, rcode )
-            if loop_rc > 0 and exp_period > 0:
-                if 'expiring_soon' not in status_count:
-                    status_count['expiring_soon']=1
-                else:
-                    status_count['expiring_soon']+=1
-        else:
-            details += "{:<{len}}| {:^17}| no expiration date\n".format( \
-                    lic, l_status, len=longest )
-
-    output  = 'Licence Check: '
-    for stat in status_count:
-        output += "{} {}, ".format(status_count[stat], stat)
-    output += "\n\n" + details
-    return(output, rcode)
-
-def ipsec( host, token, vpn_filter ):
-    url="https://{}/api/v2/monitor/vpn/ipsec/?access_token={}".format( host, token )
-    jdata=request_json( url )
-
-    output = ''
-    if DEBUG:
-        pp.pprint(jdata.get('results'))
-
-    tunFilter = {}
-    if vpn_filter:
-        for fPair in vpn_filter:
-            fConnection, fTunnel = fPair.split(':')
-            tunFilter[fConnection] = fTunnel.split(',')
-                
-    tunnelCount=0
-    tunnelIgnCount=0
-    tunnelErrCount=0
-    for vpn in sorted( jdata.get('results'), key=lambda x: x.get('name')):
-
-        vpnName = vpn.get('name')
-        output += '{}\tPeerID: [{}]\n'.format( vpnName, vpn.get('username'))
-        tunnel_status = {}
-
-        # Skip for connections w/o tunnels
-        if len( vpn.get('proxyid') ):
-
-            for tunnel in sorted( vpn.get('proxyid'), key=lambda x: x.get('p2serial') ):
-
-                tunnelCount += 1
-                tserial = tunnel.get('p2serial')
-
-                # Name is "<tunnel-name> (tunnel-serial)"
-                tname = '{} ({})'.format( tunnel.get('p2name'), tserial )
-                tstatus = tunnel.get('status')
-
-                tunnel_status.update({ tname: { 'status' : tstatus, 'ignore' : '' } })
-
-                if tunFilter.get(vpnName) and ( str(tserial) in tunFilter.get(vpnName) ):
-
-                    tunnel_status[tname].update( {'rc' :0 } )
-                    tunnel_status[tname].update( {'ignore' : '[ignored]' } )
-
-                    tunnelIgnCount += 1
-                else:
-                    if tstatus == 'up':
-                        tunnel_status[tname].update( {'rc' :0 } )
-                    else:
-                        tunnel_status[tname].update( {'rc' :1 } )
-                        tunnelErrCount += 1
-
-            longest = len( max( tunnel_status.keys(), key=len) )
-
-            for tunnel in tunnel_status:
-                output += '\t{}: {:<{len}} {} {}\n'.format(
-                        rcstring(tunnel_status[tunnel]['rc']),
-                        tunnel, 
-                        tunnel_status[tunnel]['status'],
-                        tunnel_status[tunnel]['ignore'], len=longest)
-
-        else:
-            output += '\t<< no tunnels for this connection found >>\n'
-        output += '\n'
-
-    head = "IPSec VPN: {} Connections, {} Tunnels ({} ignored), {} unignorable errors\n\n".format( 
-                    len(jdata.get('results')), tunnelCount, tunnelIgnCount, tunnelErrCount )
-    if tunnelIgnCount > 0: 
-        head += 'INFO: The following tunnels are ignored:\n'
-        for con in tunFilter:
-            head += '\t{}: {}\n'.format( con, ', '.join( tunFilter[con] ) )
-        head += '\n'
-
-    vpnRC = 1 if tunnelErrCount > 0 else 0
-
-    output = head + output
-    return(output, vpnRC)
-
-def access_points( host, token, element_filter ):
-    url="https://{}/api/v2/monitor/wifi/managed_ap?access_token={}".format( host, token )
-    jdata=request_json( url )
-
-    output = ''
-    ignoreFlag = ''
-    apRC=0
-    apCount=0
-    apCountDiscon=0
-    apCountIgn=0
-
-    if DEBUG:
-        pp.pprint(jdata.get('results'))
-
-    if len(jdata.get('results')) > 0:
-        for accessPoint in sorted( jdata.get('results'), key=lambda x: x.get('name')):
-                apName      = accessPoint.get('name')
-                apSN        = accessPoint.get('serial')
-                apFirmware  = accessPoint.get('os_version')
-                apStatus    = accessPoint.get('status')
-                apConnected = accessPoint.get('connection_state')
-
-                if apConnected != 'Connected':
-                    apCountDiscon += 1
-                    loopRC=1
-                else:
-                    apCount += 1
-                    loopRC=0
-
-                # do not update overall status if element is ignored
-                if element_filter and apSN in element_filter:
-                    ignoreFlag = '[ignored]'
-                    apCountIgn += 1
-                else:
-                    ignoreFlag = ''
-                    apRC = update_rc( loopRC, apRC )
-
-                loopStr = rcstring( loopRC )
-
-                output += "{} {};{};{};{} {}\n".format( loopStr, apName, apStatus, apSN, apFirmware, ignoreFlag )
-    else:
-        apRC = 0
-        output += 'No Accesspoints configured on this firewall'
-
-    head = "Accesspoints: {} connected, {} disconnected, {} ignored\n\n".format(apCount, apCountDiscon, apCountIgn)
-    return(head + output, apRC)
-
-def switches( host, token, element_filter ):
-    url="https://{}/api/v2/monitor/switch-controller/managed-switch/status?access_token={}".format( host, token )
-    jdata=request_json( url )
-
-    output = ''
-    ignoreFlag = ''
-    switchRC=0
-    switchCount=0
-    switchCountDiscon=0
-    switchCountIgn=0
-
-    if DEBUG:
-        pp.pprint(jdata.get('results'))
-
-    if len(jdata.get('results')) > 0:
-        for switch in sorted( jdata.get('results'), key=lambda x: x.get('name')):
-                switchName      = switch.get('name')
-                switchSN        = switch.get('serial')
-                switchFirmware  = switch.get('os_version')
-                switchStatus    = switch.get('status')
-
-                if switchStatus != 'Connected':
-                    switchCountDiscon += 1
-                    loopRC=1
-                else:
-                    switchCount += 1
-                    loopRC=0
-
-                # do not update overall status if element is ignored
-                if element_filter and switchSN in element_filter:
-                    ignoreFlag = '[ignored]'
-                    switchCountIgn += 1
-                else:
-                    ignoreFlag = ''
-                    switchRC = update_rc( loopRC, switchRC )
-
-                loopStr = rcstring( loopRC )
-
-                output += "{} {};{};{};{} {}\n".format( loopStr, switchName, switchStatus, switchSN, switchFirmware, ignoreFlag )
-    else:
-        switchRC = 0
-        output += 'No Accesspoints configured on this firewall'
-
-    head = "Switches: {} connected, {} disconnected, {} ignored\n\n".format(switchCount, switchCountDiscon, switchCountIgn)
-    return(head + output, switchRC)
-
 perfdata=''
 
-if args.port:
-    hostname = args.H + ':' + args.port
-else:
-    hostname = args.H
+# arguments / settings
+clientId = args.id
+baseURL  = args.baseurl or 'https://apigw-eucentral2.central.arubanetworks.com'
+dbDir    = args.dbdir or '/var/spool/icinga2/tmp'
+# Strip trailing /
+dbDir.rstrip('/')
+DEBUG		 = args.debug
 
-if mode=='version':
-    out_text=sysinfo(hostname, args.token)
-elif mode=='cpu':
-    (out_text, rcode, perfdata)=resource(hostname, args.token, 'cpu', warn, crit)
-elif mode=='mem':
-    (out_text, rcode, perfdata)=resource(hostname, args.token, 'mem', warn, crit)
-elif mode=='license':
-    (out_text,rcode)=license(hostname, args.token, warn, crit, list_filter )
-elif mode=='ipsec':
-    (out_text,rcode)=ipsec( hostname, args.token, list_filter )
-elif mode=='ap':
-    (out_text,rcode)=access_points( hostname, args.token, list_filter )
-elif mode=='switch':
-    (out_text,rcode)=switches( hostname, args.token, list_filter )
-else:
-    rcode=3
-    out_text='Option "--mode" required'
+if DEBUG:
+	import pprint
+	pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
+
+#-----------------------------------------------------------------------
+# Functions
+#-----------------------------------------------------------------------
+
+# Handle API Request
+def apiRequest( url, method ):
+	result = None
+	error  = None
+
+	if method == 'post':
+		resp = requests.post( url )
+	else:
+		resp = requests.get( url )
+
+	if resp:
+		result = resp.json()
+	else:
+#		logging.error(
+#				"something went wrong\n\nRESP_HEADER\n{}\nRESP_TEXT\n{}".format(
+#				resp.headers, resp.text ))
+		error=resp.text
+
+	return(result, error)
+
+def readToken( dbDir, clientId ):
+	tokenFilePath = dbDir + '/' + clientId + '.token'
+
+	try:
+		tokenCache = open(tokenFilePath, 'rb')
+
+	except FileNotFoundError:
+		print( plugin_output( 3,
+					   'Token file not found. Is the token handler OK?',
+					   None, None # Detail, Perfdata
+					   )
+		)
+		sys.exit(3)
+	except PermissionError as e:
+		print('Internal error: no permission to access DB file')
+		sys.exit(3)
+	except:
+		print('Internal error: exception while opening DB file for reading')
+		sys.exit(3)
+
+# File can be read, get information and check whether token renew is due
+	else:
+		try:
+			if DEBUG: print('pickle load')
+			filedata = pickle.load(tokenCache)
+		except:
+			# issue an UNKNOWN here, suggest to delete the file
+			print('Internal error: exception while reading file contents')
+			sys.exit(3)
+		else:
+			if DEBUG:
+				print('reading data finished!')
+				pp.pprint( filedata )
+	return
 
 
+#-----------------------------------------------------------------------
+#								  MAIN
+#-----------------------------------------------------------------------
+
+#-----------------------------------------------------------------------
+# try to read file
+readToken( dbDir, clientId )
+
+#
 #Finally, print check output and exit with rcode
-if not perfdata:
-    print("{} {}".format( rcstring(rcode), out_text ))
-else:
-    print("{} {}|{}".format( rcstring(rcode), out_text, perfdata ))
-
+#
+print( plugin_output( rcode, out_text, detail, perfdata ) )
 sys.exit(rcode)
 
-# vim: ts=4:expandtab:sw=4:sts=4:ai:smartindent:filetype=python
+# vim: ts=4:noexpandtab:sw=4:sts=4:ai:smartindent:filetype=python
 
