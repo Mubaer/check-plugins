@@ -2,6 +2,9 @@
 #
 # Run checks against HPE Aruba Networking Central
 #
+# Version 0.2 2025-02-10
+#	beta version with access point check
+#
 # Version 0.1 2025-02-07
 #    test version
 #
@@ -9,6 +12,7 @@ import os, sys
 import argparse
 import pickle
 import requests
+from tabulate2 import tabulate
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from lib.generic_plugin import *
 
@@ -52,14 +56,14 @@ if DEBUG:
 #-----------------------------------------------------------------------
 
 # Handle API Request
-def apiRequest( url, method ):
+def apiRequest( url, method = 'get', header = None ):
 	result = None
 	error  = None
 
 	if method == 'post':
-		resp = requests.post( url )
+		resp = requests.post( url, headers=header )
 	else:
-		resp = requests.get( url )
+		resp = requests.get( url, headers=header )
 
 	if resp:
 		result = resp.json()
@@ -104,7 +108,74 @@ def readToken( dbDir, clientId ):
 			if DEBUG:
 				print('reading data finished!')
 				pp.pprint( filedata )
-	return
+
+	if filedata.get('access'): return filedata['access'] 
+	else:
+		print('Internal error: token file could be read, but did not contain a token')
+		sys.exit(3)
+
+	return None
+
+
+def checkAPs (baseURL, accessToken):
+	rcode=0
+	# fetch this fields from API
+	fields=','.join( [ 'status', 'firmware_version', 'model', 'site', 'ap_group' ] )
+	url=f'{baseURL}/monitoring/v2/aps?fields={fields}'
+
+	# API-Call
+	answer, error = apiRequest( url, 'get', { 'Authorization': f'Bearer {accessToken}' } )
+
+	if answer.get('aps'):
+
+		if DEBUG: pp.pprint(answer.get('aps'))
+
+		# Output table header
+		head = [ 'Serial', 'Status', 'Name ', 'Firmware', 'Model', 'Site' ]
+		table = []
+		cDown = 0	
+		errorMap = { 'Up': 0, 'Down': 2 }
+
+		# Loop over AccessPoints
+		for ap in answer.get('aps'):
+			# set rcode to '3' if status is unknown to us
+			ap['rcode'] = errorMap.get( ap.get('status' ) )
+			if ap['rcode'] is None: ap['rcode'] = 3
+
+			ap['icingaStatus'] = rcstring( ap['rcode'] )
+
+			# update rcode, cound down APs
+			if ap['rcode'] == 2:
+				rcode = update_rc(2, rcode)
+				cDown += 1
+	
+			# line fields
+			ap_infos = [ ap['icingaStatus'], ap.get('serial'), ap.get('status'), ap.get('name'), 
+			   ap.get('firmware_version'), ap.get('model'), ap.get('site') ]
+
+			table.append( ap_infos )
+
+		# Generate ASCII table for details
+		detail = tabulate(table, headers = head)
+
+		# plugin output (first line)
+		output = 'Number of access points: {}'.format( answer.get('count') )
+		if cDown > 0:
+			output += ', DOWN: {}'.format(cDown)
+		else:
+			output += ', all UP'
+
+	else:
+		print('No Access Points returned from Aruba Networking Central')
+		sys.exit(0)
+
+	if error:
+		rcode = 3
+		output = str(error)
+
+	return rcode, output, detail
+
+
 
 
 #-----------------------------------------------------------------------
@@ -113,7 +184,12 @@ def readToken( dbDir, clientId ):
 
 #-----------------------------------------------------------------------
 # try to read file
-readToken( dbDir, clientId )
+accessToken = readToken( dbDir, clientId )
+
+if args.mode == 'aps':
+	( rcode, out_text, detail) = checkAPs( baseURL, accessToken )
+
+
 
 #
 #Finally, print check output and exit with rcode
