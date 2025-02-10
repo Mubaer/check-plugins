@@ -131,7 +131,7 @@ def checkAPs (baseURL, accessToken):
 		if DEBUG: pp.pprint(answer.get('aps'))
 
 		# Output table header
-		head = [ 'Serial', 'Status', 'Name ', 'Firmware', 'Model', 'Site' ]
+		head = [ 'Serial', 'Status', 'Name ', 'Firmware', 'Model', 'Site', 'Status' ]
 		table = []
 		cDown = 0	
 		errorMap = { 'Up': 0, 'Down': 2 }
@@ -150,8 +150,8 @@ def checkAPs (baseURL, accessToken):
 				cDown += 1
 	
 			# line fields
-			ap_infos = [ ap['icingaStatus'], ap.get('serial'), ap.get('status'), ap.get('name'), 
-			   ap.get('firmware_version'), ap.get('model'), ap.get('site') ]
+			ap_infos = [ ap.get('serial'), ap.get('status'), ap.get('name'), 
+			   ap.get('firmware_version'), ap.get('model'), ap.get('site'), ap['icingaStatus'] ]
 
 			table.append( ap_infos )
 
