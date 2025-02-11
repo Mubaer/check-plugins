@@ -3,6 +3,9 @@
 # Run checks against HPE Aruba Networking Central
 #
 #
+# Version 1.0 2025-02-11
+#    bugfix: missing output on initial token DB creation
+#
 # Version 0.5 2025-02-07
 #    improved error handling, display minutes instead of seconds
 #
@@ -155,7 +158,13 @@ try:
 	tokenCache = open(tokenFilePath, 'rb')
 
 except FileNotFoundError:
-	refreshTokenFile( dbDir, baseURL, clientId, clientSecret, refreshToken )
+	if refreshTokenFile( dbDir, baseURL, clientId, clientSecret, refreshToken ):
+		print('Token initially created, access DB file created')
+		sys.exit(0)
+	else:
+		print('Error: Could not get first access token. Refrssh token expired?')
+		sys.exit(3)
+
 except PermissionError as e:
 	print('Internal error: no permission to access DB file')
 	sys.exit(3)
