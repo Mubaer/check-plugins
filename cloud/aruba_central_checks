@@ -2,6 +2,10 @@
 #
 # Run checks against HPE Aruba Networking Central
 #
+# Version 1.1 2025-02-11
+#	moved apiRequest to lib
+program_version=str(1.1)
+#
 # Version 1.0 2025-02-11
 #	Various output improvements
 #
@@ -18,6 +22,7 @@ import requests
 from tabulate2 import tabulate
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from lib.generic_plugin import *
+from lib.jsonapi import *
 
 # parse command line parameters
 cli = argparse.ArgumentParser \
@@ -33,6 +38,8 @@ cli.add_argument('--dbdir',
 		help='directory where keys are stored', required = False)
 cli.add_argument('-d', '--debug', 
 		help='enable debugging output', action="store_true")
+cli.add_argument('--version', 
+		action='version', version='%(prog)s ' + program_version)
 args = cli.parse_args()
 
 #### init vars
@@ -57,26 +64,6 @@ if DEBUG:
 #-----------------------------------------------------------------------
 # Functions
 #-----------------------------------------------------------------------
-
-# Handle API Request
-def apiRequest( url, method = 'get', header = None ):
-	result = None
-	error  = None
-
-	if method == 'post':
-		resp = requests.post( url, headers=header )
-	else:
-		resp = requests.get( url, headers=header )
-
-	if resp:
-		result = resp.json()
-	else:
-#		logging.error(
-#				"something went wrong\n\nRESP_HEADER\n{}\nRESP_TEXT\n{}".format(
-#				resp.headers, resp.text ))
-		error=resp.text
-
-	return(result, error)
 
 def readToken( dbDir, clientId ):
 	tokenFilePath = dbDir + '/' + clientId + '.token'

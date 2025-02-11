@@ -3,6 +3,10 @@
 # Run checks against HPE Aruba Networking Central
 #
 #
+# Version 1.1 2025-02-11
+#	moved apiRequest to lib
+program_version=str(1.1)
+#
 # Version 1.0 2025-02-11
 #    bugfix: missing output on initial token DB creation
 #
@@ -20,6 +24,7 @@ import logging
 import time
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from lib.generic_plugin import *
+from lib.jsonapi import *
 
 # parse command line parameters
 cli = argparse.ArgumentParser \
@@ -39,6 +44,8 @@ cli.add_argument('--minttl', type=int,
 		help='minimum TTL for token before it is renewed', required = False)
 cli.add_argument('-d', '--debug', 
 		help='enable debugging output', action="store_true")
+cli.add_argument('--version', 
+		action='version', version='%(prog)s ' + program_version)
 args = cli.parse_args()
 
 #### init vars
@@ -66,26 +73,6 @@ if DEBUG:
 #-----------------------------------------------------------------------
 # Functions
 #-----------------------------------------------------------------------
-
-# Handle API Request
-def apiRequest( url, method ):
-	result = None
-	error  = None
-
-	if method == 'post':
-		resp = requests.post( url )
-	else:
-		resp = requests.get( url )
-
-	if resp:
-		result = resp.json()
-	else:
-#		logging.error(
-#				"something went wrong\n\nRESP_HEADER\n{}\nRESP_TEXT\n{}".format(
-#				resp.headers, resp.text ))
-		error=resp.text
-
-	return(result, error)
 
 # Refresh Token
 def renewToken( baseURL, clientId, clientSecret, refreshToken):
