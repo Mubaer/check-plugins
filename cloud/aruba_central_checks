@@ -131,7 +131,7 @@ def checkAPs (baseURL, accessToken):
 		if DEBUG: pp.pprint(answer.get('aps'))
 
 		# Output table header
-		head = [ 'Serial', 'Status', 'Name ', 'Firmware', 'Model', 'Site', 'Status' ]
+		head = [ 'Serial', 'STS', 'Name ', 'Firmware', 'Model', 'Site', 'RC' ]
 		table = []
 		cDown = 0	
 		errorMap = { 'Up': 0, 'Down': 2 }
@@ -157,6 +157,8 @@ def checkAPs (baseURL, accessToken):
 
 		# Generate ASCII table for details
 		detail = tabulate(table, headers = head)
+		detail += "\n\nSTS == Aruba central status (raw)"
+		detail += '\nRC == Return code of check plugin (intrepreted)'
 
 		# plugin output (first line)
 		output = 'Number of access points: {}'.format( answer.get('count') )
