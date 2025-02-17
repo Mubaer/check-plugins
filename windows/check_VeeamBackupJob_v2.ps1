@@ -20,8 +20,7 @@
 # Example: .\check_VeeamBackupJob.ps1 -ignorejob '99-TestJob','50-Lab'
 
 param([String[]]$exclusivejob, [String[]]$ignorejob, [Switch]$runtime, [Int]$runtime_WARNING = 1440, [Int]$runtime_CRITICAL = 2880)
-
-$version = "2.2.0"
+$version = "2.4.0"
 $ErrorActionPreference = "SilentlyContinue"
 $WarningPreference = "SilentlyContinue"
 
@@ -90,7 +89,14 @@ $OutputCount_PENDING = 0
 $OutputCount_UNKNOWN = 0
 $OutputCount_Jobs = 0
 
-$veeamjobs = Get-VBRJob | select name | Sort LogNameMainPart
+$veeam_no_copyjobs = Get-VBRJob
+$veeamjobs = @()
+foreach ($veeam_no_copyjob in $veeam_no_copyjobs) {
+    if (-not $veeam_no_copyjob.LinkedJobs) {
+        $veeamjobs += $veeam_no_copyjob
+    }
+}
+$veeamjobs = $veeamjobs | select name | Sort LogNameMainPart
 $agentjobs = Get-VBREPJob | Select name
 $tapejobs  = Get-VBRTapeJob | Select name
 $veeamjobs += $agentjobs
@@ -153,6 +159,18 @@ $veeamjobs = $veeamjobs + $veeamS3Job }
 Write-Host "Keine Verbindung zur DB"
 }
 
+# Find Copy jobs
+
+$veeamcopyjobs = Get-vbrbackupcopyjob
+foreach ($veeamcopyjob in $veeamcopyjobs){
+$veeamcopybackupjobs = $veeamcopyjob.BackupJob
+foreach ($veeamcopybackupjob in $veeamcopybackupjobs){
+$veeam_jobname = $veeamcopyjob.name + "%\" + $veeamcopybackupjob.name
+$veeamjobs = $veeamjobs + $veeam_jobname
+}
+}
+
+
 # Check each Job
 
 Foreach ($veeamjob in $veeamjobs) {
@@ -176,8 +194,8 @@ Foreach ($veeamjob in $veeamjobs) {
 
             Set-Location 'C:\Program Files\PostgreSQL\15\bin\';
             $env:PGPASSWORD = $password
-            $cmd = "SELECT job_name, job_type, state, creation_time, end_time, result FROM public.\""backup.model.jobsessions\"" where (job_name like '$veeam_jobname') ORDER BY creation_time DESC LIMIT 3;"
-
+            #$cmd = "SELECT job_name, job_type, state, creation_time, end_time, result FROM public.\""backup.model.jobsessions\"" where (job_name like '$veeam_jobname') ORDER BY creation_time DESC LIMIT 3;"
+            $cmd = "SELECT job_name, job_type, state, creation_time, end_time, result FROM (Select *,ROW_NUMBER() OVER (PARTITION BY orig_session_id ORDER BY creation_time DESC) As RowNum from public.\""backup.model.jobsessions\"" Where (job_name like '$veeam_jobname' and job_type != '65') )  AS SubQuery Where RowNum = 1 ORDER BY creation_time desc Limit 3;"
             $result = @(.\psql -h 127.0.0.1 -U $username -w -d VeeamBackup -c "$cmd")
             
             $veeam_jobhistory[0].job_name = ($result[2] -split "\|",6)[0]
@@ -213,7 +231,7 @@ Foreach ($veeamjob in $veeamjobs) {
             5  {$veeam_state = "Waiting/Running"}
             default {$veeam_state = "unknown"}
             }
-
+            $veeam_jobname = $veeam_jobname.Replace("%","")
             if ($veeam_jobenabled.schedule_enabled -like "True" -or $veeam_jobenabled -like " t" -or $veeam_jobhistory[0].job_type -eq "18000" -or $veeam_jobhistory[0].job_type -eq "18004") { # job_type 18000/18004 are S3-Offload-Jobs
             
             if ($veeam_jobhistory[0].job_name -like "(0 Zeilen)" -or !($veeam_jobhistory)){
