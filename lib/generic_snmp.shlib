@@ -63,6 +63,7 @@ function get_snmp {
 function get_snmp_lib {
 	# Function parameters
 	local units=$1
+	local nobulk=$2
 	case $units in
 		nounit*)
 			units=no ;;

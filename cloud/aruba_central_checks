@@ -1,0 +1,193 @@
+#!/usr/bin/env python3
+#
+# Run checks against HPE Aruba Networking Central
+#
+# Version 1.1 2025-02-11
+#	moved apiRequest to lib
+program_version=str(1.1)
+#
+# Version 1.0 2025-02-11
+#	Various output improvements
+#
+# Version 0.2 2025-02-10
+#	beta version with access point check
+#
+# Version 0.1 2025-02-07
+#    test version
+#
+import os, sys
+import argparse
+import pickle
+import requests
+from tabulate2 import tabulate
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from lib.generic_plugin import *
+from lib.jsonapi import *
+
+# parse command line parameters
+cli = argparse.ArgumentParser \
+	(description='Maintain Aruba Central token')
+
+cli.add_argument('--id',
+        help='Client Id',required = True)
+cli.add_argument('--mode',
+		help='check mode: wlanap | ...', required = True )
+cli.add_argument('--baseurl',
+		help='base URL for our acocunt', required = False)
+cli.add_argument('--dbdir',
+		help='directory where keys are stored', required = False)
+cli.add_argument('-d', '--debug', 
+		help='enable debugging output', action="store_true")
+cli.add_argument('--version', 
+		action='version', version='%(prog)s ' + program_version)
+args = cli.parse_args()
+
+#### init vars
+# check output
+rcode=0
+out_text=''
+detail=''
+perfdata=''
+
+# arguments / settings
+clientId = args.id
+baseURL  = args.baseurl or 'https://apigw-eucentral2.central.arubanetworks.com'
+dbDir    = args.dbdir or '/var/spool/icinga2/tmp'
+# Strip trailing /
+dbDir.rstrip('/')
+DEBUG		 = args.debug
+
+if DEBUG:
+	import pprint
+	pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
+
+#-----------------------------------------------------------------------
+# Functions
+#-----------------------------------------------------------------------
+
+def readToken( dbDir, clientId ):
+	tokenFilePath = dbDir + '/' + clientId + '.token'
+
+	try:
+		tokenCache = open(tokenFilePath, 'rb')
+
+	except FileNotFoundError:
+		print( plugin_output( 3,
+					   'Token file not found. Is the token handler OK?',
+					   None, None # Detail, Perfdata
+					   )
+		)
+		sys.exit(3)
+	except PermissionError as e:
+		print('Internal error: no permission to access DB file')
+		sys.exit(3)
+	except:
+		print('Internal error: exception while opening DB file for reading')
+		sys.exit(3)
+
+# File can be read, get information and check whether token renew is due
+	else:
+		try:
+			if DEBUG: print('pickle load')
+			filedata = pickle.load(tokenCache)
+		except:
+			# issue an UNKNOWN here, suggest to delete the file
+			print('Internal error: exception while reading file contents')
+			sys.exit(3)
+		else:
+			if DEBUG:
+				print('reading data finished!')
+				pp.pprint( filedata )
+
+	if filedata.get('access'): return filedata['access'] 
+	else:
+		print('Internal error: token file could be read, but did not contain a token')
+		sys.exit(3)
+
+	return None
+
+
+def checkAPs (baseURL, accessToken):
+	rcode=0
+	# fetch this fields from API
+	fields=','.join( [ 'status', 'firmware_version', 'model', 'site', 'ap_group' ] )
+	url=f'{baseURL}/monitoring/v2/aps?fields={fields}'
+
+	# API-Call
+	answer, error = apiRequest( url, 'get', { 'Authorization': f'Bearer {accessToken}' } )
+
+	if answer.get('aps'):
+
+		if DEBUG: pp.pprint(answer.get('aps'))
+
+		# Output table header
+		head = [ 'Serial', 'STS', 'Name ', 'Firmware', 'Model', 'Site', 'RC' ]
+		table = []
+		cDown = 0	
+		errorMap = { 'Up': 0, 'Down': 2 }
+
+		# Loop over AccessPoints
+		for ap in answer.get('aps'):
+			# set rcode to '3' if status is unknown to us
+			ap['rcode'] = errorMap.get( ap.get('status' ) )
+			if ap['rcode'] is None: ap['rcode'] = 3
+
+			ap['icingaStatus'] = rcstring( ap['rcode'] )
+
+			# update rcode, cound down APs
+			if ap['rcode'] == 2:
+				rcode = update_rc(2, rcode)
+				cDown += 1
+	
+			# line fields
+			ap_infos = [ ap.get('serial'), ap.get('status'), ap.get('name'), 
+			   ap.get('firmware_version'), ap.get('model'), ap.get('site'), ap['icingaStatus'] ]
+
+			table.append( ap_infos )
+
+		# Generate ASCII table for details
+		detail = tabulate(table, headers = head)
+		detail += "\n\nSTS == Aruba central status (raw)"
+		detail += '\nRC == Return code of check plugin (intrepreted)'
+
+		# plugin output (first line)
+		output = 'Number of access points: {}'.format( answer.get('count') )
+		if cDown > 0:
+			output += ', DOWN: {}'.format(cDown)
+		else:
+			output += ', all UP'
+
+	else:
+		print('No Access Points returned from Aruba Networking Central')
+		sys.exit(0)
+
+	if error:
+		rcode = 3
+		output = str(error)
+
+	return rcode, output, detail
+
+
+
+
+#-----------------------------------------------------------------------
+#								  MAIN
+#-----------------------------------------------------------------------
+
+#-----------------------------------------------------------------------
+# try to read file
+accessToken = readToken( dbDir, clientId )
+
+if args.mode == 'aps':
+	( rcode, out_text, detail) = checkAPs( baseURL, accessToken )
+
+
+
+#
+#Finally, print check output and exit with rcode
+#
+print( plugin_output( rcode, out_text, detail, perfdata ) )
+sys.exit(rcode)
+
+# vim: ts=4:noexpandtab:sw=4:sts=4:ai:smartindent:filetype=python
+

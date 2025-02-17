@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+#
+# Run checks against HPE Aruba Networking Central
+#
+#
+# Version 1.1 2025-02-11
+#	moved apiRequest to lib
+program_version=str(1.1)
+#
+# Version 1.0 2025-02-11
+#    bugfix: missing output on initial token DB creation
+#
+# Version 0.5 2025-02-07
+#    improved error handling, display minutes instead of seconds
+#
+# Version 0.4 2025-02-06
+#    first version for production
+#
+import os, sys
+import argparse
+import pickle
+import requests
+import logging
+import time
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from lib.generic_plugin import *
+from lib.jsonapi import *
+
+# parse command line parameters
+cli = argparse.ArgumentParser \
+	(description='Maintain Aruba Central token')
+
+cli.add_argument('--id',
+		help='Client Id',required = True)
+cli.add_argument('--secret',
+		help='Client Secret', required = True)
+cli.add_argument('--token',
+		help='initial refresh token', required = True)
+cli.add_argument('--baseurl',
+		help='base URL for our acocunt', required = False)
+cli.add_argument('--dbdir',
+		help='directory where keys are stored', required = False)
+cli.add_argument('--minttl', type=int,
+		help='minimum TTL for token before it is renewed', required = False)
+cli.add_argument('-d', '--debug', 
+		help='enable debugging output', action="store_true")
+cli.add_argument('--version', 
+		action='version', version='%(prog)s ' + program_version)
+args = cli.parse_args()
+
+#### init vars
+# check output
+rcode=0
+out_text=''
+detail=''
+perfdata=''
+
+# arguments / settings
+baseURL		= args.baseurl or 'https://apigw-eucentral2.central.arubanetworks.com'
+dbDir		= args.dbdir or '/var/spool/icinga2/tmp'
+minttl		= args.minttl or 1800 #( 30mins )
+# Strip trailing /
+dbDir.rstrip('/')
+clientId	 = args.id
+clientSecret = args.secret
+refreshToken = args.token
+DEBUG		 = args.debug
+
+if DEBUG:
+	import pprint
+	pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
+
+#-----------------------------------------------------------------------
+# Functions
+#-----------------------------------------------------------------------
+
+# Refresh Token
+def renewToken( baseURL, clientId, clientSecret, refreshToken):
+
+	url="{}/oauth2/token?client_id={}&client_secret={}&grant_type=refresh_token&refresh_token={}".format(baseURL, clientId, clientSecret, refreshToken)
+
+	jdata, error = apiRequest( url, 'post' )
+
+	if not jdata:
+		print( plugin_output(
+				3,  # return code
+				'Could not get token from cloud. Details below',
+				error, # detail text
+				None   # perfdata
+				)
+			)
+		sys.exit(3)
+
+	tokenData = { 
+			'access' : jdata.get('access_token'),
+			'refresh' : jdata.get('refresh_token'),
+			'expires' : jdata.get('expires_in')
+	 }
+	return tokenData
+
+# Write token file
+def writeFile(fpath, data):
+	try:
+		tokenCache = open(fpath, 'wb')
+	except PermissionError as error:
+		print('Pls. check directory permissions!', error)
+		sys.exit(3)
+	except:
+		print ('Something failed (exeption while writing file)')
+		sys.exit(3)
+	else:
+		pickle.dump(data, tokenCache)
+		tokenCache.close()
+
+def refreshTokenFile (dbDir, baseURL,
+				  clientId, clientSecret, refreshToken ):
+	# Checking write access
+	if not os.access(dbDir, os.W_OK):
+		print('Error: can not write to directory')
+		sys.exit(3)
+
+	tokenFilePath = dbDir + '/' + clientId + '.token'
+
+	# get new token
+	tokenData = renewToken( baseURL, clientId, clientSecret, refreshToken )
+	# add current timestamp
+	tokenData['file_created'] = int(time.time())
+
+	if DEBUG:
+		print('new token data is:')
+		pp.pprint( tokenData )
+		print('------------------')
+	writeFile( tokenFilePath, tokenData )
+	return True
+
+
+#-----------------------------------------------------------------------
+#								  MAIN
+#-----------------------------------------------------------------------
+
+#-----------------------------------------------------------------------
+# try to read file
+tokenFilePath = dbDir + '/' + clientId + '.token'
+try:
+	tokenCache = open(tokenFilePath, 'rb')
+
+except FileNotFoundError:
+	if refreshTokenFile( dbDir, baseURL, clientId, clientSecret, refreshToken ):
+		print('Token initially created, access DB file created')
+		sys.exit(0)
+	else:
+		print('Error: Could not get first access token. Refrssh token expired?')
+		sys.exit(3)
+
+except PermissionError as e:
+	print('Internal error: no permission to access DB file')
+	sys.exit(3)
+except:
+	print('Internal error: exception while opening DB file for reading')
+	sys.exit(3)
+
+# File can be read, get information and check whether token renew is due
+else:
+	try:
+		if DEBUG: print('pickle load')
+		filedata = pickle.load(tokenCache)
+	except:
+		# issue an UNKNOWN here, suggest to delete the file
+		print('Internal error: exception while reading file contents')
+		sys.exit(3)
+	else:
+		expire_time = filedata['file_created'] + filedata['expires']
+		ttl = expire_time - int(time.time())
+
+		if DEBUG:
+			print('reading data finished!')
+			pp.pprint( filedata )
+
+		# Token needs renewal?
+		if ttl > minttl:
+			out_text = 'Token valid, expires in {} minutes'.format( int(ttl/60) )
+		else:
+			# Yes, but use refresh token from file!
+			refresh_try = refreshTokenFile(
+					dbDir, baseURL, clientId, clientSecret, filedata['refresh'] )
+			if refresh_try:
+				rcode=0
+				out_text='Successfully renewed token'
+			# Note: 'else' is never reached at the moment
+			else:
+				rcode=1
+				out_text='Problem while renewing token.'
+				out_text+='Expires soon in {} minutes'.format( int(ttl/60) )
+
+			# Set to warning or critical when expiration time was too low
+			if ttl < 2 * minttl / 3: rcode = 1
+			if ttl < minttl / 3:	 rcode = 2
+
+		perfdata = "token_expires={};{};{}".format(ttl,
+												   int(2 * minttl / 3), #warn 2/3
+												   int( minttl / 3)		#crit 1/3
+												   )
+
+#
+#Finally, print check output and exit with rcode
+#
+print( plugin_output( rcode, out_text, detail, perfdata ) )
+sys.exit(rcode)
+
+# vim: ts=4:noexpandtab:sw=4:sts=4:ai:smartindent:filetype=python
+
