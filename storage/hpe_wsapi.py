@@ -73,29 +73,24 @@ def getSessionKey( host, user, pwd ):
 		pp.pprint( jdata )
 
 	#return sessionKey
-	return None
+	return jdata['key']
 
-def delSessionKey( host, user, pwd ):
+def delSessionKey( host, key ):
 
-	url="https://{}/api/v1/credentials".format(host)
-	data={ 'user': user, 'password': pwd }
+	url="https://{}/api/v1/credentials/{}".format(host, key)
 
-	jdata, error = apiRequest( url, 'get', verify=False )
+	jdata, error = apiRequest( url, 'delete', verify=False )
 
-	if not jdata:
+	if error:
 		print( plugin_output(
-				3,	# return code
-				'Could not get token from cloud. Details below',
+				1,	# return code
+				'Could not delete token from cloud. Details below',
 				error, # detail text
 				None   # perfdata
 				)
 			)
 		sys.exit(3)
 
-	if DEBUG:
-		pp.pprint( jdata )
-
-	#return sessionKey
 	return None
 
 
@@ -169,6 +164,8 @@ def checkAPs (baseURL, accessToken):
 #--------------------------- get session key ---------------------------
 
 sessionKey = getSessionKey( args.host, args.user, args.pwd )
+# after doing nothing ;) delete the sessionkey
+delSessionKey( args.host, sessionKey )
 
 if args.mode == 'aps':
 	( rcode, out_text, detail) = checkAPs( baseURL, accessToken )
