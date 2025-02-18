@@ -20,7 +20,7 @@
 # Example: .\check_VeeamBackupJob.ps1 -ignorejob '99-TestJob','50-Lab'
 
 param([String[]]$exclusivejob, [String[]]$ignorejob, [Switch]$runtime, [Int]$runtime_WARNING = 1440, [Int]$runtime_CRITICAL = 2880)
-$version = "2.4.0"
+$version = "2.4.5" # avoid psql login error in check output
 $ErrorActionPreference = "SilentlyContinue"
 $WarningPreference = "SilentlyContinue"
 
@@ -66,7 +66,7 @@ $MyModulePath = "C:\Program Files\Veeam\Backup and Replication\Console\"
 $env:PSModulePath = $env:PSModulePath + "$([System.IO.Path]::PathSeparator)$MyModulePath"
 #=========================================================================
 try {
-    $veeamPSModule = Get-Module -ListAvailable | ?{$_.Name -match "Veeam.Backup.Powershell"}
+    $veeamPSModule = Get-Module -ListAvailable | Where-Object{$_.Name -match "Veeam.Backup.Powershell"}
     Import-Module $veeamPSModule.Path -DisableNameChecking
 } catch {
     #Write-Host "Import Module failed, trying hardlink"
@@ -96,9 +96,9 @@ foreach ($veeam_no_copyjob in $veeam_no_copyjobs) {
         $veeamjobs += $veeam_no_copyjob
     }
 }
-$veeamjobs = $veeamjobs | select name | Sort LogNameMainPart
-$agentjobs = Get-VBREPJob | Select name
-$tapejobs  = Get-VBRTapeJob | Select name
+$veeamjobs = $veeamjobs | Select-Object name | Sort-Object LogNameMainPart
+$agentjobs = Get-VBREPJob | Select-Object name
+$tapejobs  = Get-VBRTapeJob | Select-Object name
 $veeamjobs += $agentjobs
 $veeamjobs += $tapejobs
 $sqlServerName = $env:COMPUTERNAME
@@ -110,11 +110,11 @@ $password = get-content -Path "C:\MRDaten\temp.txt" | Select-Object -index 1
 
 # Check Database type
 $sql_result = Invoke-SqlCmd -Query "SELECT GETDATE() AS TimeOfQuery" -ServerInstance "$sqlServerName\$sqlInstanceName" -Database $sqlDatabaseName -Username $username -Password $password
-
+if (!$sql_result){
 Set-Location 'C:\Program Files\PostgreSQL\15\bin\';
 $env:PGPASSWORD = $password
 $cmd = "\l"
-$psql_result = @(.\psql -h 127.0.0.1 -U $username -w -d VeeamBackup -c "$cmd")
+$psql_result = @(.\psql -h 127.0.0.1 -U $username -w -d VeeamBackup -c "$cmd")}
 
 if($sql_result){
 $activeConfig = "MSSQL"
@@ -165,7 +165,11 @@ $veeamcopyjobs = Get-vbrbackupcopyjob
 foreach ($veeamcopyjob in $veeamcopyjobs){
 $veeamcopybackupjobs = $veeamcopyjob.BackupJob
 foreach ($veeamcopybackupjob in $veeamcopybackupjobs){
+if($activeConfig -eq "PSQL"){
 $veeam_jobname = $veeamcopyjob.name + "%\" + $veeamcopybackupjob.name
+}else{
+$veeam_jobname = $veeamcopyjob.name + "\" + $veeamcopybackupjob.name
+}
 $veeamjobs = $veeamjobs + $veeam_jobname
 }
 }
@@ -235,7 +239,7 @@ Foreach ($veeamjob in $veeamjobs) {
             if ($veeam_jobenabled.schedule_enabled -like "True" -or $veeam_jobenabled -like " t" -or $veeam_jobhistory[0].job_type -eq "18000" -or $veeam_jobhistory[0].job_type -eq "18004") { # job_type 18000/18004 are S3-Offload-Jobs
             
             if ($veeam_jobhistory[0].job_name -like "(0 Zeilen)" -or !($veeam_jobhistory)){
-            $OutputContent += "(UNKNOWN) Job: $veeam_jobname; No entries in Database"
+            $OutputContent += "(UNKNOWN) Job: $veeam_jobname; Job never ran or no entries in Database found"
             $OutputContent += "`n"
             $OutputCount_OK = $OutputCount_OK + 1
             }else{
@@ -243,32 +247,32 @@ Foreach ($veeamjob in $veeamjobs) {
             if ($veeam_jobhistory[0].end_time -notlike '*1900*') {
                 $veeam_jobruntime = New-TimeSpan -Start $veeam_jobhistory[0].Creation_Time -End $veeam_jobhistory[0].End_Time
                 if ($veeam_jobhistory[0].Result -eq '0') {
-                    $OutputContent += "(OK) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: enabled ; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+                    $OutputContent += "(OK) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: enabled ; Runtime: $($veeam_jobruntime.Days | ForEach-Object tostring 00):$($veeam_jobruntime.Hours | ForEach-Object tostring 00):$($veeam_jobruntime.Minutes | ForEach-Object tostring 00):$($veeam_jobruntime.Seconds | ForEach-Object tostring 00)"
                     $OutputContent += "`n"
                     $OutputCount_OK = $OutputCount_OK + 1
                 }
                 elseif ($veeam_jobhistory[0].Result -eq '1') {
                     if ($veeam_jobhistory[1].Result -eq '0') {
-                        $OutputContent += "(OK) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+                        $OutputContent += "(OK) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | ForEach-Object tostring 00):$($veeam_jobruntime.Hours | ForEach-Object tostring 00):$($veeam_jobruntime.Minutes | ForEach-Object tostring 00):$($veeam_jobruntime.Seconds | ForEach-Object tostring 00)"
                         $OutputContent += "`n"
                         $OutputCount_OK = $OutputCount_OK + 1
                     }
                     elseif ($veeam_jobhistory[1].Result -eq '1') {
                         if ($veeam_jobhistory[2].Result -eq '0') {
-                            $OutputContent += "(WARNING) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+                            $OutputContent += "(WARNING) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | ForEach-Object tostring 00):$($veeam_jobruntime.Hours | ForEach-Object tostring 00):$($veeam_jobruntime.Minutes | ForEach-Object tostring 00):$($veeam_jobruntime.Seconds | ForEach-Object tostring 00)"
                             $OutputContent += "`n"
                             $OutputCount_WARNING = $OutputCount_WARNING + 1
                             $ExitCode = Set-ExitCode -code 1
                         }
                         else {
-                            $OutputContent += "(CRITICAL) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+                            $OutputContent += "(CRITICAL) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | ForEach-Object tostring 00):$($veeam_jobruntime.Hours | ForEach-Object tostring 00):$($veeam_jobruntime.Minutes | ForEach-Object tostring 00):$($veeam_jobruntime.Seconds | ForEach-Object tostring 00)"
                             $OutputContent += "`n"
                             $OutputCount_CRITICAL = $OutputCount_CRITICAL + 1
                             $ExitCode = Set-ExitCode -code 2
                         }
                     }
                     else {
-                        $OutputContent += "(CRITICAL) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+                        $OutputContent += "(CRITICAL) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | ForEach-Object tostring 00):$($veeam_jobruntime.Hours | ForEach-Object tostring 00):$($veeam_jobruntime.Minutes | ForEach-Object tostring 00):$($veeam_jobruntime.Seconds | ForEach-Object tostring 00)"
                         $OutputContent += "`n"
                         $OutputCount_CRITICAL = $OutputCount_CRITICAL + 1
                         $ExitCode = Set-ExitCode -code 2
@@ -276,18 +280,18 @@ Foreach ($veeamjob in $veeamjobs) {
                 }
                 else {
                     if ($veeam_jobhistory[1].Result -eq '0') {
-                        $OutputContent += "(OK) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+                        $OutputContent += "(OK) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | ForEach-Object tostring 00):$($veeam_jobruntime.Hours | ForEach-Object tostring 00):$($veeam_jobruntime.Minutes | ForEach-Object tostring 00):$($veeam_jobruntime.Seconds | ForEach-Object tostring 00)"
                         $OutputContent += "`n"
                         $OutputCount_OK = $OutputCount_OK + 1
                     }
                     elseif ($veeam_jobhistory[1].Result -eq '1') {
-                        $OutputContent += "(WARNING) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+                        $OutputContent += "(WARNING) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | ForEach-Object tostring 00):$($veeam_jobruntime.Hours | ForEach-Object tostring 00):$($veeam_jobruntime.Minutes | ForEach-Object tostring 00):$($veeam_jobruntime.Seconds | ForEach-Object tostring 00)"
                         $OutputContent += "`n"
                         $OutputCount_WARNING = $OutputCount_WARNING + 1
                         $ExitCode = Set-ExitCode -code 1
                     }
                     else {
-                        $OutputContent += "(CRITICAL) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+                        $OutputContent += "(CRITICAL) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: $veeam_state; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | ForEach-Object tostring 00):$($veeam_jobruntime.Hours | ForEach-Object tostring 00):$($veeam_jobruntime.Minutes | ForEach-Object tostring 00):$($veeam_jobruntime.Seconds | ForEach-Object tostring 00)"
                         $OutputContent += "`n"
                         $OutputCount_CRITICAL = $OutputCount_CRITICAL + 1
                         $ExitCode = Set-ExitCode -code 2
@@ -298,40 +302,40 @@ Foreach ($veeamjob in $veeamjobs) {
                 $veeam_jobruntime = New-TimeSpan -Start $veeam_jobhistory[0].creation_time -End $timeNow
                 if (($veeam_jobruntime.TotalMinutes -ge $runtime_WARNING) -and ($veeam_jobruntime.TotalMinutes -lt $runtime_CRITICAL)) {
                     if (($veeam_jobhistory[1].Result -eq '2') -or (($veeam_jobhistory[1].Result -eq '1') -and ($veeam_jobhistory[2].Result -eq '2'))) {
-                        $OutputContent += "(CRITICAL) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: running; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+                        $OutputContent += "(CRITICAL) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: running; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | ForEach-Object tostring 00):$($veeam_jobruntime.Hours | ForEach-Object tostring 00):$($veeam_jobruntime.Minutes | ForEach-Object tostring 00):$($veeam_jobruntime.Seconds | ForEach-Object tostring 00)"
                         $OutputContent += "`n"
                         $OutputCount_CRITICAL = $OutputCount_CRITICAL + 1
                         $ExitCode = Set-ExitCode -code 2
 
                     }
                     else {
-                        $OutputContent += "(WARNING) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: running; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+                        $OutputContent += "(WARNING) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: running; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | ForEach-Object tostring 00):$($veeam_jobruntime.Hours | ForEach-Object tostring 00):$($veeam_jobruntime.Minutes | ForEach-Object tostring 00):$($veeam_jobruntime.Seconds | ForEach-Object tostring 00)"
                         $OutputContent += "`n"
                         $OutputCount_WARNING = $OutputCount_WARNING + 1
                         $ExitCode = Set-ExitCode -code 1
                     }
                 }
                 elseif ($veeam_jobruntime.TotalMinutes -ge $runtime_CRITICAL) {
-                    $OutputContent += "(CRITICAL) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: running; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+                    $OutputContent += "(CRITICAL) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: running; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | ForEach-Object tostring 00):$($veeam_jobruntime.Hours | ForEach-Object tostring 00):$($veeam_jobruntime.Minutes | ForEach-Object tostring 00):$($veeam_jobruntime.Seconds | ForEach-Object tostring 00)"
                     $OutputContent += "`n"
                     $OutputCount_CRITICAL = $OutputCount_CRITICAL + 1
                     $ExitCode = Set-ExitCode -code 2
                 }
                 else {
                     if (($veeam_jobhistory[1].Result -eq '2') -or (($veeam_jobhistory[1].Result -eq '1') -and ($veeam_jobhistory[2].Result -eq '2'))) {
-                        $OutputContent += "(CRITICAL) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: running; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+                        $OutputContent += "(CRITICAL) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: running; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | ForEach-Object tostring 00):$($veeam_jobruntime.Hours | ForEach-Object tostring 00):$($veeam_jobruntime.Minutes | ForEach-Object tostring 00):$($veeam_jobruntime.Seconds | ForEach-Object tostring 00)"
                         $OutputContent += "`n"
                         $OutputCount_CRITICAL = $OutputCount_CRITICAL + 1
                         $ExitCode = Set-ExitCode -code 2
                     }
                     elseif (($veeam_jobhistory[1].Result -eq '1') -and ($veeam_jobhistory[2].Result -eq '1')) {
-                        $OutputContent += "(WARNING) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: running; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+                        $OutputContent += "(WARNING) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: running; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | ForEach-Object tostring 00):$($veeam_jobruntime.Hours | ForEach-Object tostring 00):$($veeam_jobruntime.Minutes | ForEach-Object tostring 00):$($veeam_jobruntime.Seconds | ForEach-Object tostring 00)"
                         $OutputContent += "`n"
                         $OutputCount_WARNING = $OutputCount_WARNING + 1
                         $ExitCode = Set-ExitCode -code 1
                     }
                     else {
-                        $OutputContent += "(OK) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: running; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+                        $OutputContent += "(OK) Job: $veeam_jobname; Last 3 Results: $(LastResultsString -result1 $veeam_jobhistory[0].Result -result2 $veeam_jobhistory[1].Result -result3 $veeam_jobhistory[2].Result); State: running; Scheduled: enabled; Runtime: $($veeam_jobruntime.Days | ForEach-Object tostring 00):$($veeam_jobruntime.Hours | ForEach-Object tostring 00):$($veeam_jobruntime.Minutes | ForEach-Object tostring 00):$($veeam_jobruntime.Seconds | ForEach-Object tostring 00)"
                         $OutputContent += "`n"
                         $OutputCount_OK = $OutputCount_OK + 1
                     }
@@ -346,12 +350,12 @@ Foreach ($veeamjob in $veeamjobs) {
         }
         else {
             if ($veeam_jobhistory[0].Result -eq '0' -or $veeam_state -eq 'Idle') {
-                $OutputContent += "(OK) Job: $veeam_jobname; Last Result: $veeam_jobhistory[0].Result; State: $veeam_state; Scheduled: $veeam_jobenabled.schedule_enabled; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+                $OutputContent += "(OK) Job: $veeam_jobname; Last Result: $veeam_jobhistory[0].Result; State: $veeam_state; Scheduled: $veeam_jobenabled.schedule_enabled; Runtime: $($veeam_jobruntime.Days | ForEach-Object tostring 00):$($veeam_jobruntime.Hours | ForEach-Object tostring 00):$($veeam_jobruntime.Minutes | ForEach-Object tostring 00):$($veeam_jobruntime.Seconds | ForEach-Object tostring 00)"
                 $OutputContent += "`n"
                 $OutputCount_OK = $OutputCount_OK + 1
             }
             else {
-                $OutputContent += "(WARNING) Job: $veeam_jobname; Last Result: $veeam_jobhistory[0].Result; State: $veeam_state; Scheduled: $veeam_jobenabled.schedule_enabled; Runtime: $($veeam_jobruntime.Days | % tostring 00):$($veeam_jobruntime.Hours | % tostring 00):$($veeam_jobruntime.Minutes | % tostring 00):$($veeam_jobruntime.Seconds | % tostring 00)"
+                $OutputContent += "(WARNING) Job: $veeam_jobname; Last Result: $veeam_jobhistory[0].Result; State: $veeam_state; Scheduled: $veeam_jobenabled.schedule_enabled; Runtime: $($veeam_jobruntime.Days | ForEach-Object tostring 00):$($veeam_jobruntime.Hours | ForEach-Object tostring 00):$($veeam_jobruntime.Minutes | ForEach-Object tostring 00):$($veeam_jobruntime.Seconds | ForEach-Object tostring 00)"
                 $OutputContent += "`n"
                 $OutputCount_WARNING = $OutputCount_WARNING + 1
                 $ExitCode = Set-ExitCode -code 1
