@@ -3,7 +3,10 @@
 # Run checks against HPE WSAPI
 # (tested with HPE Alletra)
 #
-program_version=str(0.1)
+program_version=str(0.2)
+# Version 0.2
+#	added "volumes" and "disks"
+#
 # Version 0.1 2025-02-17
 #	 test version
 #
@@ -75,9 +78,9 @@ def getSessionKey( host, user, pwd ):
 	#return sessionKey
 	return jdata['key']
 
-def delSessionKey( host, key ):
+def delSessionKey( host, sessionKey ):
 
-	url="https://{}/api/v1/credentials/{}".format(host, key)
+	url="https://{}/api/v1/credentials/{}".format(host, sessionKey)
 
 	jdata, error = apiRequest( url, 'delete', verify=False )
 
@@ -93,59 +96,85 @@ def delSessionKey( host, key ):
 
 	return None
 
-
-def checkAPs (baseURL, accessToken):
+def checkVolumes (host, sessionKey):
 	rcode=0
+	output=''
+	detail=''
 	# fetch this fields from API
-	fields=','.join( [ 'status', 'firmware_version', 'model', 'site', 'ap_group' ] )
-	url=f'{baseURL}/monitoring/v2/aps?fields={fields}'
+	# interessting fields: name, state, totalUsedMiB, sizeMiB
+	url=f'https://{host}/api/v1/volumes'
+	header={
+		'Accept': 'application/json',
+		'X-HP3PAR-WSAPI-SessionKey': sessionKey
+		}
 
 	# API-Call
-	answer, error = apiRequest( url, 'get', { 'Authorization': f'Bearer {accessToken}' } )
+	answer, error = apiRequest( url, 'get', verify=False, header=header)
 
-	if answer.get('aps'):
-
-		if DEBUG: pp.pprint(answer.get('aps'))
-
-		# Output table header
-		head = [ 'Serial', 'STS', 'Name ', 'Firmware', 'Model', 'Site', 'RC' ]
+	if answer.get('members'):
+		# Init output table header
+		head = [ 'Name', 'State', 'Size (MiB)', '% Used', 'RC' ]
 		table = []
-		cDown = 0	
-		errorMap = { 'Up': 0, 'Down': 2 }
+		cProblems = 0
+		cOK = 0
 
-		# Loop over AccessPoints
-		for ap in answer.get('aps'):
+		# Loop over Volums
+		for vol in answer.get('members'):
+			# Exclude volumes that start with "." or "admin"
+			if vol.get('name').startswith('.') or vol.get('name') == 'admin':
+				continue
+			cOK += 1
 			# set rcode to '3' if status is unknown to us
-			ap['rcode'] = errorMap.get( ap.get('status' ) )
-			if ap['rcode'] is None: ap['rcode'] = 3
+			vol['rcode'] = _volumeStateEnum( vol.get('state' )).get('icingaState')
+			vol['stateDesc'] = _volumeStateEnum( vol.get('state' )).get('desc')
 
-			ap['icingaStatus'] = rcstring( ap['rcode'] )
+			# Set return code according to system's state
+			if vol['rcode'] is None: vol['rcode'] = 3
 
-			# update rcode, cound down APs
-			if ap['rcode'] == 2:
-				rcode = update_rc(2, rcode)
-				cDown += 1
-	
+			# -----------
+			# Calculate percent usage and overwrite system's state if greater
+			# than "usrSpcAllocWarningPct"
+			vol['pctusage'] = int(vol['totalUsedMiB'] / vol['sizeMiB'] * 100 )
+
+			# calculate critical level from warning level
+			warnLevel = vol['usrSpcAllocWarningPct']
+			critLevel = 100 - (100 - warnLevel) / 2
+			# Overwrite status
+			if vol['pctusage'] >= critLevel:
+				vol['rcode'] = 2
+			elif vol['pctusage'] >= warnLevel:
+				vol['rcode'] = 1
+			# -----------
+
+			# update rcode, count problem Volumes1
+			if vol['rcode'] > 0:
+				rcode = update_rc(vol['rcode'], rcode)
+				cProblems += 1
+
+			# set the corresponding icinga state string
+			vol['icingaDetailState'] = rcstring( vol['rcode'] )
+
 			# line fields
-			ap_infos = [ ap.get('serial'), ap.get('status'), ap.get('name'), 
-			   ap.get('firmware_version'), ap.get('model'), ap.get('site'), ap['icingaStatus'] ]
+			volume_infos = [ vol.get('name'), vol.get('stateDesc'), 
+				   '{:,}'.format( vol.get('sizeMiB') ), 
+				   str(vol['pctusage']) + '%',
+				   vol['icingaDetailState'] ]
 
-			table.append( ap_infos )
+			table.append( volume_infos )
 
 		# Generate ASCII table for details
-		detail = tabulate(table, headers = head)
-		detail += "\n\nSTS == Aruba central status (raw)"
-		detail += '\nRC == Return code of check plugin (intrepreted)'
+		detail = tabulate(table, headers = head, 
+					colglobalalign='right', colalign = ('left','left') )
 
+		detail += "\n\nNote: Commas ',' in numbers are thousand separators!"
 		# plugin output (first line)
-		output = 'Number of access points: {}'.format( answer.get('count') )
-		if cDown > 0:
-			output += ', DOWN: {}'.format(cDown)
+		output = 'Number of volumes: {}'.format( cOK )
+		if cProblems > 0:
+			output += ', with problems: {}'.format(cProblems)
 		else:
-			output += ', all UP'
-
+			output += ', all OK'
 	else:
-		print('No Access Points returned from Aruba Networking Central')
+		print('No Volumes found.')
 		sys.exit(0)
 
 	if error:
@@ -154,7 +183,104 @@ def checkAPs (baseURL, accessToken):
 
 	return rcode, output, detail
 
+def checkDisks (host, sessionKey):
+	rcode=0
+	output=''
+	detail=''
+	# fetch this fields from API
+	# interessting fields: name, state, totalUsedMiB, sizeMiB
+	url=f'https://{host}/api/v1/disks'
+	header={
+		'Accept': 'application/json',
+		'X-HP3PAR-WSAPI-SessionKey': sessionKey
+		}
 
+	# API-Call
+	answer, error = apiRequest( url, 'get', verify=False, header=header)
+
+	if answer.get('members'):
+		# Output table header
+		head = [ 'ID', 'Pos.', 'State ', 'Size (MiB)', 'Used', 'RC' ]
+		table = []
+		cProblems = 0
+
+		# Loop over Volums
+		for disk in answer.get('members'):
+			# set rcode to '3' if status is unknown to us
+			disk['rcode'] = _diskStateEnum( disk.get('state' )).get('icingaState')
+			disk['stateDesc'] = _diskStateEnum( disk.get('state' )).get('desc')
+
+			if disk['rcode'] is None: disk['rcode'] = 3
+
+			# set the corresponding icinga state string
+			disk['icingaDetailState'] = rcstring( disk['rcode'] )
+
+			# calculate percent used
+			disk['pctusage'] = int( 
+						(disk['totalSizeMiB'] - disk['freeSizeMiB'] ) / 
+						 disk['totalSizeMiB'] * 100 )
+			# update rcode, count disks with problems
+			if disk['rcode'] > 0:
+				rcode = update_rc(disk['rcode'], rcode)
+				cProblems += 1
+
+			# line fields
+			disk_infos = [ disk.get('id'), disk.get('position'),
+					disk.get('stateDesc'),
+				   '{:,}'.format( disk.get('totalSizeMiB') ),
+					str( disk.get('pctusage') ) + '%',
+					 disk['icingaDetailState'] ]
+
+			table.append( disk_infos )
+
+		# Generate ASCII table for details
+		detail = tabulate(table, headers = head)
+		detail += "\n\nNote: Commas ',' in numbers are thousand separators!"
+
+		# plugin output (first line)
+		output = 'Number of disks: {}'.format( answer.get('total') )
+		if cProblems > 0:
+			output += ', with problems: {}'.format(cProblems)
+		else:
+			output += ', all OK'
+	else:
+		print('No Disks found.')
+		sys.exit(0)
+
+	if error:
+		rcode = 3
+		output = str(error)
+
+	return rcode, output, detail
+
+def _volumeStateEnum( num ):
+	volStates = {
+			1:	{ 'desc': 'normal', 'icingaState': 0 },
+			2:	{ 'desc': 'degraded', 'icingaState': 1 },
+			3:	{ 'desc': 'failed', 'icingaState': 2 },
+			4:	{ 'desc': 'unknown', 'icingaState': 3 }
+			}
+	if not volStates.get( num ):
+		message = 'internal error: unknown volume state "{}"'.format(num)
+		print( plugin_output( 3, message, '', '' ) )
+		sys.exit(3)
+
+	return volStates.get( num )
+
+def _diskStateEnum( num ):
+	volStates = {
+			1:	{ 'desc': 'normal',   'icingaState': 0 },
+			2:	{ 'desc': 'degraded', 'icingaState': 1 },
+			3:	{ 'desc': 'new',      'icingaState': 0 },
+			4:	{ 'desc': 'failed',   'icingaState': 2 },
+			99:	{ 'desc': 'unknown',  'icingaState': 3 }
+			}
+	if not volStates.get( num ):
+		message = 'internal error: unknown volume state "{}"'.format(num)
+		print( plugin_output( 3, message, '', '' ) )
+		sys.exit(3)
+
+	return volStates.get( num )
 
 
 #-----------------------------------------------------------------------
@@ -163,12 +289,16 @@ def checkAPs (baseURL, accessToken):
 
 #--------------------------- get session key ---------------------------
 
+# get a session key
 sessionKey = getSessionKey( args.host, args.user, args.pwd )
-# after doing nothing ;) delete the sessionkey
-delSessionKey( args.host, sessionKey )
 
-if args.mode == 'aps':
-	( rcode, out_text, detail) = checkAPs( baseURL, accessToken )
+if args.mode == 'volumes':
+	( rcode, out_text, detail) = checkVolumes( args.host, sessionKey )
+if args.mode == 'disks':
+	( rcode, out_text, detail) = checkDisks( args.host, sessionKey )
+
+# delete the session key
+delSessionKey( args.host, sessionKey )
 
 #
 #Finally, print check output and exit with rcode
