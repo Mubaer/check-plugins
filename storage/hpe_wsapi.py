@@ -96,10 +96,11 @@ def delSessionKey( host, sessionKey ):
 
 	return None
 
-def checkVolumes (host, sessionKey):
+def checkVolumes(host, sessionKey):
 	rcode=0
 	output=''
 	detail=''
+	perfdata=''
 	# fetch this fields from API
 	# interessting fields: name, state, totalUsedMiB, sizeMiB
 	url=f'https://{host}/api/v1/volumes'
@@ -162,17 +163,22 @@ def checkVolumes (host, sessionKey):
 
 			table.append( volume_infos )
 
+			# append perfdata
+			perfdata += "{}={}%;{};{};0;100 ".format(
+					vol.get('name'), vol['pctusage'], warnLevel, critLevel )
+
 		# Generate ASCII table for details
 		detail = tabulate(table, headers = head, 
 					colglobalalign='right', colalign = ('left','left') )
 
-		detail += "\n\nNote: Commas ',' in numbers are thousand separators!"
+		detail += "\n\nNote: Commas ',' in numbers are thousand separators."
 		# plugin output (first line)
 		output = 'Number of volumes: {}'.format( cOK )
 		if cProblems > 0:
 			output += ', with problems: {}'.format(cProblems)
 		else:
 			output += ', all OK'
+
 	else:
 		print('No Volumes found.')
 		sys.exit(0)
@@ -181,12 +187,13 @@ def checkVolumes (host, sessionKey):
 		rcode = 3
 		output = str(error)
 
-	return rcode, output, detail
+	return rcode, output, detail, perfdata
 
-def checkDisks (host, sessionKey):
+def checkDisks(host, sessionKey):
 	rcode=0
 	output=''
 	detail=''
+	perfdata=''
 	# fetch this fields from API
 	# interessting fields: name, state, totalUsedMiB, sizeMiB
 	url=f'https://{host}/api/v1/disks'
@@ -233,9 +240,12 @@ def checkDisks (host, sessionKey):
 
 			table.append( disk_infos )
 
+			# append perfdata
+			perfdata += "{}={}% ".format( disk.get('name'), disk['pctusage'] )
+
 		# Generate ASCII table for details
 		detail = tabulate(table, headers = head)
-		detail += "\n\nNote: Commas ',' in numbers are thousand separators!"
+		detail += "\n\nNote: Commas ',' in numbers are thousand separators."
 
 		# plugin output (first line)
 		output = 'Number of disks: {}'.format( answer.get('total') )
@@ -251,7 +261,43 @@ def checkDisks (host, sessionKey):
 		rcode = 3
 		output = str(error)
 
-	return rcode, output, detail
+	return rcode, output, detail, perfdata
+
+def systemInfo( host, sessionKey):
+	rcode=0
+	output=''
+	detail=''
+	# fetch this fields from API
+	# interessting fields: name, systemVersion, model, serialNumber, totalNodes
+	url=f'https://{host}/api/v1/system'
+	header={
+		'Accept': 'application/json',
+		'X-HP3PAR-WSAPI-SessionKey': sessionKey
+		}
+
+
+	map_field2output = {
+			'name': 'Name', 
+			'model': 'Model',
+			'systemVersion': 'System Version',
+			'serialNumber': 'Serial Number', 'totalNodes': 'Number of Nodes' 
+			}
+	# API-Call
+	answer, error = apiRequest( url, 'get', verify=False, header=header)
+
+
+	# check for valid answer
+	table=[]
+	if answer.get('id'):
+		for field in map_field2output.keys():
+			infos=[ map_field2output[field], answer.get(field) ]
+			table.append( infos )
+
+		detail = tabulate(table)
+	else:
+		print('could not get system information')
+
+	return 0, 'test', detail
 
 def _volumeStateEnum( num ):
 	volStates = {
@@ -292,10 +338,14 @@ def _diskStateEnum( num ):
 # get a session key
 sessionKey = getSessionKey( args.host, args.user, args.pwd )
 
+if args.mode == 'info':
+	( rcode, out_text, detail) = systemInfo( args.host, sessionKey )
 if args.mode == 'volumes':
-	( rcode, out_text, detail) = checkVolumes( args.host, sessionKey )
+	( rcode, out_text, detail, perfdata) = checkVolumes( args.host, sessionKey )
 if args.mode == 'disks':
-	( rcode, out_text, detail) = checkDisks( args.host, sessionKey )
+	( rcode, out_text, detail, perfdata) = checkDisks( args.host, sessionKey )
+if args.mode == 'capacity':
+	( rcode, out_text, detail) = checkCapacity( args.host, sessionKey )
 
 # delete the session key
 delSessionKey( args.host, sessionKey )
