@@ -3,7 +3,10 @@
 # Run checks against HPE WSAPI
 # (tested with HPE Alletra)
 #
-program_version=str(0.2)
+program_version=str(1.0)
+# Version 1.0
+#	bugfixes, refactor
+#
 # Version 0.2
 #	added "volumes" and "disks"
 #
@@ -275,7 +278,6 @@ def systemInfo( host, sessionKey):
 		'X-HP3PAR-WSAPI-SessionKey': sessionKey
 		}
 
-
 	map_field2output = {
 			'name': 'Name', 
 			'model': 'Model',
@@ -285,19 +287,17 @@ def systemInfo( host, sessionKey):
 	# API-Call
 	answer, error = apiRequest( url, 'get', verify=False, header=header)
 
-
 	# check for valid answer
 	table=[]
 	if answer.get('id'):
 		for field in map_field2output.keys():
 			infos=[ map_field2output[field], answer.get(field) ]
 			table.append( infos )
-
 		detail = tabulate(table)
 	else:
 		print('could not get system information')
 
-	return 0, 'test', detail
+	return 0, 'System Info', detail
 
 def _volumeStateEnum( num ):
 	volStates = {
