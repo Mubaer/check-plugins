@@ -20,7 +20,7 @@
 # Example: .\check_VeeamBackupJob.ps1 -ignorejob '99-TestJob','50-Lab'
 
 param([String[]]$exclusivejob, [String[]]$ignorejob, [Switch]$runtime, [Int]$runtime_WARNING = 1440, [Int]$runtime_CRITICAL = 2880)
-$version = "2.4.5" # avoid psql login error in check output
+$version = "2.4.7" # UNKNOWN Jobs werden korrekt angezeigt
 $ErrorActionPreference = "SilentlyContinue"
 $WarningPreference = "SilentlyContinue"
 
@@ -96,7 +96,7 @@ foreach ($veeam_no_copyjob in $veeam_no_copyjobs) {
         $veeamjobs += $veeam_no_copyjob
     }
 }
-$veeamjobs = $veeamjobs | Select-Object name | Sort-Object LogNameMainPart
+#$veeamjobs = $veeamjobs | Select-Object name | Sort-Object LogNameMainPart
 $agentjobs = Get-VBREPJob | Select-Object name
 $tapejobs  = Get-VBRTapeJob | Select-Object name
 $veeamjobs += $agentjobs
@@ -241,7 +241,7 @@ Foreach ($veeamjob in $veeamjobs) {
             if ($veeam_jobhistory[0].job_name -like "(0 Zeilen)" -or !($veeam_jobhistory)){
             $OutputContent += "(UNKNOWN) Job: $veeam_jobname; Job never ran or no entries in Database found"
             $OutputContent += "`n"
-            $OutputCount_OK = $OutputCount_OK + 1
+            $OutputCount_UNKNOWN = $OutputCount_UNKNOWN + 1
             }else{
             
             if ($veeam_jobhistory[0].end_time -notlike '*1900*') {
@@ -411,10 +411,10 @@ $OutputContent += "`n"
 $OutputContent += "Check version: " + $version
 
 
-Write-Host "(OK): $OutputCount_OK; (WARNING): $OutputCount_WARNING; (CRITICAL): $OutputCount_CRITICAL; (PENDING): $OutputCount_PENDING; Jobs in Check: $OutputCount_Jobs"
+Write-Host "(OK): $OutputCount_OK; (WARNING): $OutputCount_WARNING; (CRITICAL): $OutputCount_CRITICAL; (UNKNOWN): $OutputCount_UNKNOWN; (PENDING): $OutputCount_PENDING; Jobs in Check: $OutputCount_Jobs"
 Write-Host ""
 Write-Host "Running Jobs Runtime Thresholds - WARNING at $runtime_WARNING minutes - CRITICAL at $runtime_CRITICAL minutes"
 Write-Host $OutputContent
 
 $LASTEXITCODE = $ExitCode
-#;exit ($ExitCode)
+;exit ($ExitCode)
