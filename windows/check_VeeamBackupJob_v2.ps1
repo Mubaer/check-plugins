@@ -20,7 +20,7 @@
 # Example: .\check_VeeamBackupJob.ps1 -ignorejob '99-TestJob','50-Lab'
 
 param([String[]]$exclusivejob, [String[]]$ignorejob, [Switch]$runtime, [Int]$runtime_WARNING = 1440, [Int]$runtime_CRITICAL = 2880)
-$version = "2.4.7" # UNKNOWN Jobs werden korrekt angezeigt
+$version = "2.4.8" # also exclude backup copy jobs with source repositories
 $ErrorActionPreference = "SilentlyContinue"
 $WarningPreference = "SilentlyContinue"
 
@@ -92,7 +92,7 @@ $OutputCount_Jobs = 0
 $veeam_no_copyjobs = Get-VBRJob
 $veeamjobs = @()
 foreach ($veeam_no_copyjob in $veeam_no_copyjobs) {
-    if (-not $veeam_no_copyjob.LinkedJobs) {
+    if (-not $veeam_no_copyjob.LinkedJobs -and -not $veeam_no_copyjob.LinkedRepositories) {
         $veeamjobs += $veeam_no_copyjob
     }
 }
