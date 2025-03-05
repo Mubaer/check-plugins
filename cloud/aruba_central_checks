@@ -114,7 +114,7 @@ def checkAPs (baseURL, accessToken):
 	url=f'{baseURL}/monitoring/v2/aps?fields={fields}'
 
 	# API-Call
-	answer, error = apiRequest( url, 'get', { 'Authorization': f'Bearer {accessToken}' } )
+	answer, error = apiRequest( url, 'get', header = { 'Authorization': f'Bearer {accessToken}' } )
 
 	if answer.get('aps'):
 
