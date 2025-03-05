@@ -20,9 +20,11 @@
 # Example: .\check_VeeamBackupJob.ps1 -ignorejob '99-TestJob','50-Lab'
 
 param([String[]]$exclusivejob, [String[]]$ignorejob, [Switch]$runtime, [Int]$runtime_WARNING = 1440, [Int]$runtime_CRITICAL = 2880)
-$version = "2.4.5" # avoid psql login error in check output
+$version = "2.5.2" # extend transscript file
 $ErrorActionPreference = "SilentlyContinue"
 $WarningPreference = "SilentlyContinue"
+
+$Transscript_path = "C:\mr_managed_it\Logs\check_VeeamBackupJob." + (Get-Date).ToString("yyyy-MM-dd_HH-mm-ss") + ".txt"
 
 if ($exclusivejob -and $ignorejob) {
     Write-Host "(UNKNOWN) Don't use -exclusivejob and -ignorejob at the same time"
@@ -92,13 +94,18 @@ $OutputCount_Jobs = 0
 $veeam_no_copyjobs = Get-VBRJob
 $veeamjobs = @()
 foreach ($veeam_no_copyjob in $veeam_no_copyjobs) {
-    if (-not $veeam_no_copyjob.LinkedJobs) {
+    if (-not $veeam_no_copyjob.LinkedJobs -and -not $veeam_no_copyjob.LinkedRepositories) {
         $veeamjobs += $veeam_no_copyjob
     }
 }
-$veeamjobs = $veeamjobs | Select-Object name | Sort-Object LogNameMainPart
+"Veeam-Jobs w/o Copyjobs: " | Out-File -FilePath $Transscript_path -Append
+$veeamjobs | Out-File -FilePath $Transscript_path -Append
 $agentjobs = Get-VBREPJob | Select-Object name
-$tapejobs  = Get-VBRTapeJob | Select-Object name
+"Agent-Jobs: " | Out-File -FilePath $Transscript_path -Append
+$agentjobs | Out-File -FilePath $Transscript_path -Append
+$tapejobs = Get-VBRTapeJob | Select-Object name
+"Tape-Jobs: " | Out-File -FilePath $Transscript_path -Append
+$tapejobs | Out-File -FilePath $Transscript_path -Append
 $veeamjobs += $agentjobs
 $veeamjobs += $tapejobs
 $sqlServerName = $env:COMPUTERNAME
@@ -134,7 +141,11 @@ $resultRepos = @(Invoke-SqlCmd -Query $s3repos -ServerInstance "$sqlServerName\$
 $repo_name = $resultRepos[0].name
 $sqlS3Job = "SELECT TOP (1) job_name, job_type FROM [VeeamBackup].[dbo].[Backup.Model.JobSessions] where (job_name like '$repo_name%' and job_type like '18000') order by creation_time desc"
 $veeam_S3Jobresult = @(Invoke-SqlCmd -Query $sqlS3Job -ServerInstance "$sqlServerName\$sqlInstanceName" -Database $sqlDatabaseName -Username $username -Password $password)
-if ($veeam_S3Jobresult){$veeamjobs = $veeamjobs + $veeam_S3Jobresult.job_name }
+if ($veeam_S3Jobresult){
+$veeamjobs = $veeamjobs + $veeam_S3Jobresult.job_name
+"S3-Jobs: " | Out-File -FilePath $Transscript_path -Append
+$veeam_S3Jobresult.job_name | Out-File -FilePath $Transscript_path -Append
+}
 }elseif($activeConfig -eq "PSQL"){
 Set-Location 'C:\Program Files\PostgreSQL\15\bin\';
 $env:PGPASSWORD = $password
@@ -152,7 +163,10 @@ $veeam_S3Jobresult = @(.\psql -h 127.0.0.1 -U $username -w -d VeeamBackup -c "$s
 if ($veeam_S3Jobresult[2] -notlike "(0 Zeilen)"){
 $veeamS3Job = ($veeam_S3Jobresult[2]  -split "\|",2)[0]
 $veeamS3Job = (($veeamS3Job).TrimEnd(" ")).TrimStart(" ")
-$veeamjobs = $veeamjobs + $veeamS3Job }
+$veeamjobs = $veeamjobs + $veeamS3Job
+"S3-Jobs: " | Out-File -FilePath $Transscript_path -Append
+$veeamS3Job | Out-File -FilePath $Transscript_path -Append
+}
 }
 }
 }else{
@@ -162,8 +176,10 @@ Write-Host "Keine Verbindung zur DB"
 # Find Copy jobs
 
 $veeamcopyjobs = Get-vbrbackupcopyjob
+"CopyJobs: "  | Out-File -FilePath $Transscript_path -Append
 foreach ($veeamcopyjob in $veeamcopyjobs){
 $veeamcopybackupjobs = $veeamcopyjob.BackupJob
+$veeamcopyjob.Name | Out-File -FilePath $Transscript_path -Append
 foreach ($veeamcopybackupjob in $veeamcopybackupjobs){
 if($activeConfig -eq "PSQL"){
 $veeam_jobname = $veeamcopyjob.name + "%\" + $veeamcopybackupjob.name
@@ -174,6 +190,10 @@ $veeamjobs = $veeamjobs + $veeam_jobname
 }
 }
 
+"Exclusive Jobs: " | Out-File -FilePath $Transscript_path -Append
+$exclusivejob | Out-File -FilePath $Transscript_path -Append
+"Ignore Jobs: "  | Out-File -FilePath $Transscript_path -Append
+$ignorejob | Out-File -FilePath $Transscript_path -Append
 
 # Check each Job
 
@@ -241,7 +261,7 @@ Foreach ($veeamjob in $veeamjobs) {
             if ($veeam_jobhistory[0].job_name -like "(0 Zeilen)" -or !($veeam_jobhistory)){
             $OutputContent += "(UNKNOWN) Job: $veeam_jobname; Job never ran or no entries in Database found"
             $OutputContent += "`n"
-            $OutputCount_OK = $OutputCount_OK + 1
+            $OutputCount_UNKNOWN = $OutputCount_UNKNOWN + 1
             }else{
             
             if ($veeam_jobhistory[0].end_time -notlike '*1900*') {
@@ -411,10 +431,10 @@ $OutputContent += "`n"
 $OutputContent += "Check version: " + $version
 
 
-Write-Host "(OK): $OutputCount_OK; (WARNING): $OutputCount_WARNING; (CRITICAL): $OutputCount_CRITICAL; (PENDING): $OutputCount_PENDING; Jobs in Check: $OutputCount_Jobs"
+Write-Host "(OK): $OutputCount_OK; (WARNING): $OutputCount_WARNING; (CRITICAL): $OutputCount_CRITICAL; (UNKNOWN): $OutputCount_UNKNOWN; (PENDING): $OutputCount_PENDING; Jobs in Check: $OutputCount_Jobs"
 Write-Host ""
 Write-Host "Running Jobs Runtime Thresholds - WARNING at $runtime_WARNING minutes - CRITICAL at $runtime_CRITICAL minutes"
 Write-Host $OutputContent
 
 $LASTEXITCODE = $ExitCode
-#;exit ($ExitCode)
+;exit ($ExitCode)
