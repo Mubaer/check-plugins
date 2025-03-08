@@ -89,6 +89,34 @@ function status_errormap_arubacx {
 	echo "${map[$numState]}"
 }
 
+function status_stringmap_cisco {
+	local numState=$1
+
+	local -a map
+	map[1]='normal'
+	map[2]='warning'
+	map[3]='critical'
+	map[4]='shutdown'
+	map[5]='not present'
+	map[5]='not functioning'
+
+	echo "${map[$numState]}"
+}
+
+function status_errormap_cisco {
+	local numState=$1
+
+	local -a map
+	map[1]=0
+	map[2]=1
+	map[3]=2
+	map[4]=1
+	map[5]=0
+	map[6]=2
+
+	echo "${map[$numState]}"
+}
+
 function fan_table {
 	local filter=$1
 
@@ -134,7 +162,10 @@ function fan_table {
 			fanstate_string=$( status_stringmap_$mode $fanstate )
 			state_bystatus=$( status_errormap_$mode $fanstate )
 			state_detail_string=$( state_string $state_bystatus )
-			#outmsg+=", State: $state_detail_string"
+			# if there's no speed information, print status at least
+			if [ -z "${id[speed]}" ] ; then
+				outmsg+=", State: $state_detail_string"
+			fi
 			detail_line+=", State: $fanstate_string"
 		fi
 
@@ -151,8 +182,12 @@ function fan_table {
 		# merge everything together
 		outmsg+="; "
 		details+="$detail_line\n"
-		perfdata+="$name=$speed;$warn;$crit "
+		# perfdata doesn't make sense w/o speed info
+		if [ -n "${id[speed]}" ] ; then
+			perfdata+="$name=$speed;$warn;$crit "
+		fi
 	done
+	details=$( echo -e "$details" | sort )
 }
 
 #
@@ -186,6 +221,14 @@ case $mode in
 		get_snmp_lib
 		test_errors 'Fans: ' 'fans'
 		process_snmp_namedindex_flex
+		fan_table .
+	;;
+	cisco)
+		baseOID='.1.3.6.1.4.1.9.9.13.1.5.1'
+		id[name]=2
+		id[state]=3
+		get_snmp_lib
+		process_snmp_namedindex
 		fan_table .
 	;;
 	*)
