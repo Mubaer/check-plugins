@@ -4,6 +4,8 @@
 #
 # Author: Xin Qu
 #
+# Version: 1.1.1 2025-03-08
+#   Bugfix: used psu OID instead of fan OID
 # Version: 1.1 2025-03-08
 #	+ support for cisco switches
 #   + don't write emtpy perfdata, ommit it completely
@@ -230,10 +232,11 @@ case $mode in
 		fan_table .
 	;;
 	cisco)
-		baseOID='.1.3.6.1.4.1.9.9.13.1.5.1'
+		baseOID='.1.3.6.1.4.1.9.9.13.1.4.1'
 		id[name]=2
 		id[state]=3
 		get_snmp_lib
+		test_errors 'Fans: ' 'fans'
 		process_snmp_namedindex
 		fan_table .
 	;;
