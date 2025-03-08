@@ -4,6 +4,12 @@
 #
 # Author: Xin Qu
 #
+# Version: 1.1 2025-03-08
+#	+ support for cisco switches
+#   + don't write emtpy perfdata, ommit it completely
+#   + use state instead of speed in output if no speed available
+#   + sort details
+#
 # Version: 1.0 2024-12-16
 #	Support for aruba cx
 #	A lot of enhancements
