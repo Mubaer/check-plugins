@@ -258,9 +258,11 @@ function process_snmp_namedindex {
 
 	# build element index. Last OID-Tree-Level is the index
 	for key in ${!snmpData[@]} ; do
+		dbg_msg "testing whether $key matches $baseOID.${id[name]}"
 		if [[ $key == "$baseOID.${id[name]}".* ]] ; then
-		key=${key/.*\./}
-		elementList+=( $key )
+			dbg_msg "match!"
+			key=${key/.*\./}
+			elementList+=( $key )
 		fi
 	done
 	dbg_msg "DEBUG [elementList]: ${elementList[*]}"
