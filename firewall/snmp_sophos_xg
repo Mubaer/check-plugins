@@ -4,6 +4,9 @@
 #
 # Author: msander
 #
+# Version: 1.1  2025-03-05
+#   - added regex filter feature for licenses
+#
 # Version: 1.0  2024-09-30
 #   - declare script as 'stable'
 #   - added feature "ignore trial" and "ignore unsubscribed"
@@ -132,6 +135,7 @@ function date_to_epoch {
 }
 
 function license_check {
+    local filter=$1
     local licenseNames=( Base NetProtect WebProtect MailProtect WebServer Sandstorm EnhancedSupport EnhancedPlusSupport  C-Orchestration )
     local subOID
     local licStatus
@@ -142,10 +146,12 @@ function license_check {
     local loop_rcode=0
     local lic_data_invalid=0
     # initialize counter array
-    local licenseCounter=( 0 0 0 0 0 )
-    local statusNames=( none trial unsubscribed subscribed expired )
+    local licenseCounter=( 0 0 0 0 0 0 )
+    local statusNames=( none trial unsubscribed subscribed expired IGNORED )
     # Seconds per Day
     local s2d=86400
+    # Which licenses were ignored
+    local lic_ignored=''
 
     local epoch_current=`date +%s`
 
@@ -162,7 +168,6 @@ function license_check {
         if [ -z "$licStatus" ] ;then
             licStatus=0
         fi
-        licenseCounter[$licStatus]=$(( licenseCounter[$licStatus] + 1 ))
 
         # Expiration Date
         subOID="${baseOID}.$(( licIndex +1 )).2.0"
@@ -174,6 +179,15 @@ function license_check {
         else
             lic_data_invalid=0
         fi
+
+        # FILTER: Skip if license name mathes regex "filter"
+        if [ -n "$filter" ] ; then
+            if [[  "${licenseNames[$licIndex]}" =~ $filter ]] ;then
+                lic_ignored+="${licenseNames[$licIndex]} "
+                licStatus=5
+            fi
+        fi
+        licenseCounter[$licStatus]=$(( licenseCounter[$licStatus] + 1 ))
 
         if [ $lic_data_invalid -ne 1 ] ; then
             epoch_expire=$( date_to_epoch "$human_expire" )
@@ -187,6 +201,8 @@ function license_check {
                 loop_rcode=0
             # ignore unsubscribed licenses (if CLI argument set)
             elif [ $licStatus -eq 2 -a "$IGNORE_UNSUB_LIC" -eq 1 ] ; then
+                loop_rcode=0
+            elif [ $licStatus -eq 5 ] ; then
                 loop_rcode=0
             else 
                 loop_rcode=$( calc_state $(( -$days_til_expire )) $lic_warn $lic_crit )
@@ -209,9 +225,15 @@ function license_check {
         fi
 
         details+="   $loop_line\n"
+
     done
 
-    outmsg+="Number of Licenses: Trial = ${licenseCounter[1]}, Unsubscribed = ${licenseCounter[2]}, Subscribed = ${licenseCounter[3]}, Expired = ${licenseCounter[4]}"
+    outmsg+="Number of Licenses: Trial = ${licenseCounter[1]}, Unsubscribed = ${licenseCounter[2]}, Subscribed = ${licenseCounter[3]}, Expired = ${licenseCounter[4]}, Ignored = ${licenseCounter[5]}"
+
+    # Inform about ignored licenses
+    if [ -n "$lic_ignored" ] ;then
+        details+="\nNOTE: This licenses are intentionally ignored:\n\t$lic_ignored"
+    fi
 }
 
 function check_vpntunnel() {
@@ -490,7 +512,7 @@ function cpu_check {
 # set default values
 #
 mode=${mode:=cpu}
-filter=${filter:=.}
+filter=${filter:=}
 tout=${tout:=20}
 ha_disabled_rc=${ha_disabled_rc:=0}
 ha_local_status_ok=${ha_local_status_ok:=primary}
@@ -517,7 +539,7 @@ case $mode in
     license)
         baseOID='.1.3.6.1.4.1.2604.5.1.5'
         get_snmp
-        license_check
+        license_check $filter
     ;;
 
     tunnel)

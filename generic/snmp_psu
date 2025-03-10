@@ -4,6 +4,9 @@
 #
 # Author: Xin Qu
 #
+# Version: 1.0 2025-04-08
+#   + support for cisco switches
+#
 # Version: 0.1 2024-12-20
 #	First test version
 #	Support for aruba cx
@@ -108,6 +111,34 @@ function status_errormap_arubacx {
 	echo "${map[$numState]}"
 }
 
+function status_stringmap_cisco {
+	local numState=$1
+
+	local -a map
+	map[1]='normal'
+	map[2]='warning'
+	map[3]='critical'
+	map[4]='shutdown'
+	map[5]='not present'
+	map[5]='not functioning'
+
+	echo "${map[$numState]}"
+}
+
+function status_errormap_cisco {
+	local numState=$1
+
+	local -a map
+	map[1]=0
+	map[2]=1
+	map[3]=2
+	map[4]=1
+	map[5]=0
+	map[6]=2
+
+	echo "${map[$numState]}"
+}
+
 function psu_table {
 	local filter=$1
 
@@ -137,7 +168,7 @@ function psu_table {
 
     for element in  ${outElements[@]}
     do
-        name=${snmpData[${baseOID}.${id[name]}.$element]}
+        name="${snmpData[${baseOID}.${id[name]}.$element]} ${snmpUnit[${baseOID}.${id[name]}.$element]}"
 		# remove quotes
 		name=${name//\"/}
 		# quick and dirty fix: remove trailing space (real fix above, but requires qnap testing)
@@ -244,6 +275,15 @@ case $mode in
 		test_errors 'PSUs: ' 'PSUs'
 		process_snmp_namedindex_flex
 		psu_table .
+		;;
+	cisco)
+		baseOID='.1.3.6.1.4.1.9.9.13.1.5.1'
+		id[name]=2
+		id[state]=3
+		get_snmp_lib
+		test_errors 'PSUs: ' 'PSUs'
+		process_snmp_namedindex
+        psu_table .
 		;;
 	*)
 		echo "(UNKNOWN): mode '-m $mode' not known" ; exit 3 ;;
