@@ -20,7 +20,7 @@
 # Example: .\check_VeeamBackupJob.ps1 -ignorejob '99-TestJob','50-Lab'
 
 param([String[]]$exclusivejob, [String[]]$ignorejob, [Switch]$runtime, [Int]$runtime_WARNING = 1440, [Int]$runtime_CRITICAL = 2880)
-$version = "2.5.2" # extend transscript file
+$version = "2.5.3" # Login-Fehler an Veeam abgefangen
 $ErrorActionPreference = "SilentlyContinue"
 $WarningPreference = "SilentlyContinue"
 
@@ -92,11 +92,16 @@ $OutputCount_UNKNOWN = 0
 $OutputCount_Jobs = 0
 
 $veeam_no_copyjobs = Get-VBRJob
+
+if($veeam_no_copyjobs){
 $veeamjobs = @()
 foreach ($veeam_no_copyjob in $veeam_no_copyjobs) {
     if (-not $veeam_no_copyjob.LinkedJobs -and -not $veeam_no_copyjob.LinkedRepositories) {
         $veeamjobs += $veeam_no_copyjob
     }
+}
+}else{
+    "Anmeldung an Veeam-Instanz nicht möglich." | Out-File -FilePath $Transscript_path -Append
 }
 "Veeam-Jobs w/o Copyjobs: " | Out-File -FilePath $Transscript_path -Append
 $veeamjobs | Out-File -FilePath $Transscript_path -Append
