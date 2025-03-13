@@ -4,6 +4,9 @@
 #
 # Author: Xin Qu
 #
+# Version: 0.3 2025-03-14
+#	- make min/max values work in icinga (set default thresholds)
+#
 # Version: 0.2 2025-03-12
 #   - check for radius auth failures
 #   - check for request evaluation times
@@ -82,8 +85,9 @@ function check_radius_requests {
 	local radServerCount='5.0'
 	local radServerFailure='4.0'
 	local radServerSuccess='3.0'
-	#local warn
-	#local crit
+	# Set thesholds to defaults so that icinga recognizes "min/max" values
+	local warn=${warn:-0}
+	local crit=${crit:-0}
 
 	total=${snmpData[$baseOID.$radServerCount]}
 	failed=${snmpData[$baseOID.$radServerFailure]}
@@ -105,8 +109,8 @@ function check_request_time {
 
 	glob_rcode=0
 	outmsg+="Radius Policy Perfomance: Evaluation Time: ${evalTime}ms, Total Time: ${requestTime}ms"
-	perfdata="radPolicyEvalTime=$evalTime;$warn;$crit "
-	perfdata+="radAuthRequestTime=$requestTime;$warn;$crit"
+	perfdata="radPolicyEvalTime=${evalTime};$warn;$crit "
+	perfdata+="radAuthRequestTime=${requestTime};$warn;$crit"
 }
 
 case $mode in
