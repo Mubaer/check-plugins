@@ -4,6 +4,10 @@
 #
 # Author: Xin Qu
 #
+# Version 1.0 2025-03-17
+#	- implemented thresholds
+#	- perfdata and threshold comparsion also in percent (for requests)
+#
 # Version: 0.3 2025-03-14
 #	- make min/max values work in icinga (set default thresholds)
 #
@@ -29,7 +33,7 @@ glob_rcode=0
 #
 
 OPTERR=1
-while getopts "H:C:u:x:X:a:A:l:w:c:m:f:F:t:Bhd" OPTION ; do
+while getopts "H:C:u:x:X:a:A:l:w:c:m:f:F:t:Bhdp" OPTION ; do
 	case "${OPTION}" in
 		H) hostname=${OPTARG}		;;
 		C) community="-c ${OPTARG}" ;;
@@ -41,6 +45,7 @@ while getopts "H:C:u:x:X:a:A:l:w:c:m:f:F:t:Bhd" OPTION ; do
 		l) seclevel="-l ${OPTARG}"	;;
 		w) warn=${OPTARG}			;;
 		c) crit=${OPTARG}			;;
+		p) flag_pct=1				;;
 		m) mode=${OPTARG}			;;
 		f) filter=${OPTARG}			;;
 		F) neg_filter=${OPTARG}		;;
@@ -89,28 +94,49 @@ function check_radius_requests {
 	local warn=${warn:-0}
 	local crit=${crit:-0}
 
-	total=${snmpData[$baseOID.$radServerCount]}
-	failed=${snmpData[$baseOID.$radServerFailure]}
-	success=${snmpData[$baseOID.$radServerSuccess]}
+	local total=${snmpData[$baseOID.$radServerCount]}
+	local failed=${snmpData[$baseOID.$radServerFailure]}
+	local success=${snmpData[$baseOID.$radServerSuccess]}
+	local failed_pct=$( percent $total $failed )
 
-	glob_rcode=0
+	# Choose whether threshold compares to numeric or percent value
+	if [ -n "$flag_pct" ]; then
+		local compare=$failed_pct
+	else
+		local compare=$failed
+	fi
+
+	if [ $warn -ne 0 -a $crit -ne 0 ]; then
+		glob_rcode=$( calc_state $compare $warn $crit )
+	else
+		glob_rcode=0
+	fi
+
 	outmsg+="Radius Global Requests Counter: total: $total, success: $success, failed: $failed"
 	perfdata="radReqFailed=$failed;$warn;$crit;0;$total"
+	perfdata+="radReqFailedPct=${failed_pct}%"
 }
 
 function check_request_time {
 	local radPolicyEvalTime='1.0'
 	local radAuthRequestTime='2.0'
-	#local warn
-	#local crit
+	local warn=${warn:-0}
+	local crit=${crit:-0}
 
 	evalTime=${snmpData[$baseOID.$radPolicyEvalTime]}
 	requestTime=${snmpData[$baseOID.$radAuthRequestTime]}
 
-	glob_rcode=0
-	outmsg+="Radius Policy Perfomance: Evaluation Time: ${evalTime}ms, Total Time: ${requestTime}ms"
+	if [ $warn -ne 0 -a $crit -ne 0 ]; then
+		glob_rcode=$( calc_state $evalTime $warn $crit )
+	else
+		glob_rcode=0
+	fi
+
+	outmsg+="Radius Policy Perfomance: Evaluation Time: ${evalTime}ms, Request Time: ${requestTime}ms"
+	# thesholds test evalTime
 	perfdata="radPolicyEvalTime=${evalTime};$warn;$crit "
-	perfdata+="radAuthRequestTime=${requestTime};$warn;$crit"
+	# no thesholds here
+	perfdata+="radAuthRequestTime=${requestTime}"
 }
 
 case $mode in
