@@ -4,6 +4,10 @@
 #
 # Author: Xin Qu
 #
+# Version 1.1 2025-03-17
+#	- append thesholds to perfdata depending on comparsion type (percent or
+#	  total)
+#
 # Version 1.0 2025-03-17
 #	- implemented thresholds
 #	- perfdata and threshold comparsion also in percent (for requests)
@@ -113,8 +117,13 @@ function check_radius_requests {
 	fi
 
 	outmsg+="Radius Global Requests Counter: total: $total, success: $success, failed: $failed"
-	perfdata="radReqFailed=$failed;$warn;$crit;0;$total"
-	perfdata+="radReqFailedPct=${failed_pct}%"
+	if [ -n "$flag_pct" ]; then
+		perfdata="radReqFailed=$failed;0;0;0;$total "
+		perfdata+="radReqFailedPct=${failed_pct}%;$warn;$crit"
+	else
+		perfdata="radReqFailed=$failed;$warn;$crit;0;$total "
+		perfdata+="radReqFailedPct=${failed_pct}%;"
+	fi
 }
 
 function check_request_time {
