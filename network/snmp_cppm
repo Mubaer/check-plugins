@@ -4,6 +4,10 @@
 #
 # Author: Xin Qu
 #
+# Version 1.1.1 2025-03-18
+#	- use 'intelligent' switching of threshold  comparsion type, depending
+#	  on '%' sign
+#
 # Version 1.1 2025-03-17
 #	- append thesholds to perfdata depending on comparsion type (percent or
 #	  total)
@@ -49,7 +53,6 @@ while getopts "H:C:u:x:X:a:A:l:w:c:m:f:F:t:Bhdp" OPTION ; do
 		l) seclevel="-l ${OPTARG}"	;;
 		w) warn=${OPTARG}			;;
 		c) crit=${OPTARG}			;;
-		p) flag_pct=1				;;
 		m) mode=${OPTARG}			;;
 		f) filter=${OPTARG}			;;
 		F) neg_filter=${OPTARG}		;;
@@ -94,17 +97,29 @@ function check_radius_requests {
 	local radServerCount='5.0'
 	local radServerFailure='4.0'
 	local radServerSuccess='3.0'
+
 	# Set thesholds to defaults so that icinga recognizes "min/max" values
 	local warn=${warn:-0}
 	local crit=${crit:-0}
 
+	# Get values from device
 	local total=${snmpData[$baseOID.$radServerCount]}
 	local failed=${snmpData[$baseOID.$radServerFailure]}
 	local success=${snmpData[$baseOID.$radServerSuccess]}
 	local failed_pct=$( percent $total $failed )
 
+	if [[ "$crit" =~ %$ ]] ; then
+		threshold_mode='percent'
+	else
+		threshold_mode='absolute'
+	fi
+
+	# Remove % sign for value comparsion
+	warn=${warn%\%}
+	crit=${crit%\%}
+
 	# Choose whether threshold compares to numeric or percent value
-	if [ -n "$flag_pct" ]; then
+	if [ $threshold_mode == 'percent' ] ; then
 		local compare=$failed_pct
 	else
 		local compare=$failed
@@ -117,7 +132,8 @@ function check_radius_requests {
 	fi
 
 	outmsg+="Radius Global Requests Counter: total: $total, success: $success, failed: $failed"
-	if [ -n "$flag_pct" ]; then
+
+	if [ $threshold_mode == 'percent' ] ; then
 		perfdata="radReqFailed=$failed;0;0;0;$total "
 		perfdata+="radReqFailedPct=${failed_pct}%;$warn;$crit"
 	else
