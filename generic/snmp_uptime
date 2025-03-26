@@ -4,6 +4,8 @@
 #
 # Author: msander
 #
+# Version: 1.1	2025-03-26
+#	return unknown on incomplete data, preventing "0" in perfdata
 # Version: 1.0	2024-11-12
 #	add clearpass support
 # Version: 0.1	2023-04-04
@@ -80,13 +82,20 @@ function get_snmp {
 
 	if [ $snmpexit -ne 0 ] ; then
 		echo "(UNKNOWN): Problem fetching SNMP data."
-		echo 
+		echo
 		echo "SNMP Output was: $snmpResponse"
 		exit 3
 	fi
 
 	while read oid value
 	do 
+		# test for invalid data
+		if [ -z "$oid" ]; then
+			echo "(UNKNOWN): Problem fetching SNMP data: Got response, but missing values"
+			echo
+			echo "SNMP Output was: $snmpResponse"
+			exit 3
+		fi
 		snmpData[$oid]="$value"
 	done <<< "$snmpResponse"
 }
