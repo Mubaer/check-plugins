@@ -8,6 +8,9 @@
 #
 # Author: Xin Qu
 #
+# Version: 1.2.2 2025-03-26
+#	Adapting to icingaWebDB: Do not align output columns. 
+#
 # Version: 1.2.1 2024-12-20
 #	finalized ENTITY-MIB information
 #
@@ -166,7 +169,7 @@ function check_hp_element_status {
 		get_snmp $errorStatusOID.$element
 		eStatus=$( map_hh3cEntityExtErrorStatus ${snmpData[$errorStatusOID.$element]} )
 		loop_rcode=$( rate_hh3cEntityExtErrorStatus ${snmpData[$errorStatusOID.$element]} )
-		loop_sstring=$( state_string $loop_rcode y )
+		loop_sstring=$( state_string $loop_rcode )
 
 		# Output & set exit code
 		outmsg+="$eName: $eStatus; "
@@ -287,7 +290,7 @@ function check_cisco_element_status {
 		# remove quotes
 		eName=${eName//\"/}
 
-		statusString=$( state_string $loopRCODE y )
+		statusString=$( state_string $loopRCODE )
 		outmsg+="$eName: $descStatus; "
 		details+="$statusString  $eName: $descStatus\n"
 	done

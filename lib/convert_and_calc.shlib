@@ -2,6 +2,8 @@
 # Check Plugin Functions for converting and calculation data
 #
 # Author: Xin Qu
+#   Version 0.3 2024-03-11
+#		- bugfix: avoid division by zero
 #   Version 0.2 2024-03-11
 
 #
@@ -50,6 +52,11 @@ function hr_bytes() {
 function percent() {
     local total=$1
     local part=$2
-    $bc -l <<< "scale=4; r( ($part / $total * 100), 0 )"
+    # Avoid division by zero
+    if [ "$total" -eq 0 ] ; then
+        echo '0'
+    else
+        $bc -l <<< "scale=4; r( ($part / $total * 100), 0 )"
+    fi
 }
 
