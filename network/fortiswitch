@@ -2,7 +2,8 @@
 #
 # Check FortiSwitch via API
 #
-program_version=str(0.4)
+program_version=str(1.0)
+# Version 1.0 - 1st productive version
 # Version 0.4 - system info
 # Version 0.3 - fans, psu, perfdatas, thesholds
 # Version 0.2 - ram and cpu
@@ -52,7 +53,12 @@ def login(host,user,passwd,port=False):
 	payload = "username={}&secretkey={}".format( user, passwd )
 
 	r = client.post(url_login, data=payload, verify=False)
-	apscookie=r.cookies
+	if not r.cookies:
+		out_text = 'Can not login. Check credentials.'
+		print( plugin_output(3, out_text, None, None) )
+		sys.exit(3)
+	else:
+		apscookie=r.cookies
 
 	for cookie in client.cookies:
 		if cookie.name == 'ccsrftoken':
@@ -108,7 +114,7 @@ def check_psu(answer):
 		# 
 		#  No PSUs 
 		#
-		out = 'No Fans found on this device'
+		out = 'No PSUs found on this device'
 
 	return( rcode, out, perf )
 
@@ -181,6 +187,12 @@ def check_mem(answer, warn, crit):
 	perf = f'mem={mem}%;{warn};{crit}'
 	return( rcode, out, perf )
 
+def set_errormsg(error):
+	rcode = 3
+	out = 'An error occured. Details below.'
+	detail = error
+	return( rcode, out, detail )
+
 #-----------------------------------------------------------------------
 #								  MAIN
 #-----------------------------------------------------------------------
@@ -197,7 +209,11 @@ if args.mode == 'info':
 	client, cookie = login( args.hostname, args.user, args.password )
 	url=f'https://{ args.hostname }/api/v{ args.apiversion }/monitor/system/status'
 	( answer, error ) = request( client, cookie, url )
-	( rcode, out_text, detail ) = get_info( answer )
+	if error:
+		( rcode, out_text, detail ) = set_errormsg( error )
+	else:
+		( rcode, out_text, detail ) = get_info( answer )
+
 	if DEBUG:
 		pp.pprint(answer)
 		pp.pprint(error)
@@ -208,7 +224,10 @@ elif args.mode == 'psu':
 	url=f'https://{ args.hostname }/api/v{ args.apiversion }/monitor/system/psu-status'
 
 	( answer, error ) = request( client, cookie, url )
-	( rcode, out_text, perfdata ) = check_psu( answer )
+	if error:
+		( rcode, out_text, detail ) = set_errormsg( error )
+	else:
+		( rcode, out_text, perfdata ) = check_psu( answer )
 	if DEBUG:
 		pp.pprint(answer)
 
@@ -218,7 +237,10 @@ elif args.mode == 'fan':
 	url=f'https://{ args.hostname }/api/v{ args.apiversion }/monitor/system/fan-status'
 
 	( answer, error ) = request( client, cookie, url )
-	( rcode, out_text, perfdata ) = check_fan( answer )
+	if error:
+		( rcode, out_text, detail ) = set_errormsg( error )
+	else:
+		( rcode, out_text, perfdata ) = check_fan( answer )
 	if DEBUG:
 		pp.pprint(answer)
 
@@ -228,7 +250,10 @@ elif args.mode == 'cpu':
 	url=f'https://{ args.hostname }/api/v{ args.apiversion }/monitor/system/resource'
 
 	( answer, error ) = request( client, cookie, url )
-	( rcode, out_text, perfdata ) = check_cpu( answer, args.warn, args.crit )
+	if error:
+		( rcode, out_text, detail ) = set_errormsg( error )
+	else:
+		( rcode, out_text, perfdata ) = check_cpu( answer, args.warn, args.crit )
 
 elif args.mode == 'ram':
 	# Login
@@ -237,8 +262,10 @@ elif args.mode == 'ram':
 	# Get resources (mem, cpu in %)
 	url=f'https://{ args.hostname }/api/v{ args.apiversion }/monitor/system/resource'
 	( answer, error ) = request( client, cookie, url )
-
-	( rcode, out_text, perfdata ) = check_mem( answer, args.warn, args.crit )
+	if error:
+		( rcode, out_text, detail ) = set_errormsg( error )
+	else:
+		( rcode, out_text, perfdata ) = check_mem( answer, args.warn, args.crit )
 
 else:
 	rcode=3
@@ -255,4 +282,4 @@ else:
 print( plugin_output(rcode, out_text, detail, perfdata) )
 sys.exit(rcode)
 
-# vim: ts=4:noexpandtab:sw=4:sts=4:ai:smartindent:filetype=python
+# vim: ts=4:noexpandtab:sw=4:sts=4:ai:smartindent:filetype=python:nofoldenable
