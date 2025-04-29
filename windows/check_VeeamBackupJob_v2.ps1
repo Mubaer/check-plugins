@@ -101,7 +101,7 @@ foreach ($veeam_no_copyjob in $veeam_no_copyjobs) {
     }
 }
 }else{
-    "Anmeldung an Veeam-Instanz nicht möglich." | Out-File -FilePath $Transscript_path -Append
+    "(UNKNOWN) Anmeldung an Veeam-Instanz nicht möglich." | Out-File -FilePath $Transscript_path -Append
 }
 "Veeam-Jobs w/o Copyjobs: " | Out-File -FilePath $Transscript_path -Append
 $veeamjobs | Out-File -FilePath $Transscript_path -Append
@@ -134,7 +134,7 @@ $activeConfig = "MSSQL"
 $activeConfig = "PSQL"
 }else{
 
-Write-host "Keine Datenbank-Anmeldung möglich"
+Write-host "(UNKNOWN) Keine Datenbank-Anmeldung möglich"
 
 }
 
@@ -175,7 +175,7 @@ $veeamS3Job | Out-File -FilePath $Transscript_path -Append
 }
 }
 }else{
-Write-Host "Keine Verbindung zur DB"
+Write-Host "(UNKNOWN) Keine Verbindung zur DB"
 }
 
 # Find Copy jobs
