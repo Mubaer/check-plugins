@@ -2,7 +2,8 @@
 #
 # Check FortiSwitch via API
 #
-program_version=str(1.0)
+program_version=str(1.1)
+# Version 1.1 - template for future license check
 # Version 1.0 - 1st productive version
 # Version 0.4 - system info
 # Version 0.3 - fans, psu, perfdatas, thesholds
@@ -103,6 +104,32 @@ def get_info(answer):
 		rcode=3
 
 	return( rcode, out, detail )
+
+# TODO / not ready
+def get_license(answer):
+	rcode=0
+	detail=''
+	out=''
+	fields={
+			'hostname': 'Hostname',
+			'serial_number': 'S/N',
+			'version': 'Version',
+			'system_part_number': 'Part-No.',
+			'BIOS_version': 'BIOS-Version',
+		 }
+
+	if answer.get('results'):
+		for key in fields.keys():
+			value = answer.get('results').get(key)
+			if not value: value = '-unknown-'
+			detail += f'{fields[key]:15}: {value}\n'
+		out = 'System Info'
+	else:
+		out = 'No system info found'
+		rcode=3
+
+	return( rcode, out, detail )
+
 def check_psu(answer):
 	rcode=0
 	out=''; perf=''
@@ -213,6 +240,21 @@ if args.mode == 'info':
 		( rcode, out_text, detail ) = set_errormsg( error )
 	else:
 		( rcode, out_text, detail ) = get_info( answer )
+
+	if DEBUG:
+		pp.pprint(answer)
+		pp.pprint(error)
+
+# TODO / feature not required yet
+elif args.mode == 'license':
+	# Login
+	client, cookie = login( args.hostname, args.user, args.password )
+	url=f'https://{ args.hostname }/api/v{ args.apiversion }/monitor/switch/capabilities'
+	( answer, error ) = request( client, cookie, url )
+	if error:
+		( rcode, out_text, detail ) = set_errormsg( error )
+	#else:
+		#( rcode, out_text, detail ) = get_license( answer )
 
 	if DEBUG:
 		pp.pprint(answer)
