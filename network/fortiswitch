@@ -2,7 +2,9 @@
 #
 # Check FortiSwitch via API
 #
-program_version=str(1.1)
+program_version=str(1.3)
+# Version 1.3 - Fixed and simplified Fan-Check (failed for multiple fans)
+# Version 1.2 - finalized PSU check
 # Version 1.1 - template for future license check
 # Version 1.0 - 1st productive version
 # Version 0.4 - system info
@@ -110,37 +112,21 @@ def get_license(answer):
 	rcode=0
 	detail=''
 	out=''
-	fields={
-			'hostname': 'Hostname',
-			'serial_number': 'S/N',
-			'version': 'Version',
-			'system_part_number': 'Part-No.',
-			'BIOS_version': 'BIOS-Version',
-		 }
-
-	if answer.get('results'):
-		for key in fields.keys():
-			value = answer.get('results').get(key)
-			if not value: value = '-unknown-'
-			detail += f'{fields[key]:15}: {value}\n'
-		out = 'System Info'
-	else:
-		out = 'No system info found'
-		rcode=3
-
 	return( rcode, out, detail )
 
 def check_psu(answer):
 	rcode=0
 	out=''; perf=''
-	psus=[]
 
 	if len(answer.get('results')) > 0:
-		out='PSUs found. Please work on "check_psu" to display details ;-)'
+		for psu in answer.get('results'):
+			name = psu.get('name')
+			stat = psu.get('status')
+			if stat != 'OK':
+				rcode = update_rc( 1, rcode )
+			out += f'{name}: {stat}; '
 	else:
-		# 
 		#  No PSUs 
-		#
 		out = 'No PSUs found on this device'
 
 	return( rcode, out, perf )
@@ -148,7 +134,6 @@ def check_psu(answer):
 def check_fan(answer):
 	rcode=0
 	out=''; out_warn=''; perf=''
-	fans=[]
 
 	if len(answer.get('results')) > 0:
 		# 
@@ -157,31 +142,18 @@ def check_fan(answer):
 
 		# normalizing data info 'fans'
 		for fan in answer.get('results'):
-			if fan.get('module') == 'fan':
-				speed = fan.get('speed').get('value')
-				unit  = fan.get('speed').get('unit')
-				state = fan.get('status')
-				if unit != '%':
-					out_warn = 'Warning! Unsupported speed unit'
-				else:
-					fans.append( { 'speed': speed, 'state': state } )
+			name  = fan.get('module')
+			speed = fan.get('speed').get('value')
+			unit  = fan.get('speed').get('unit')
+			state = fan.get('status')
+			if unit != '%':
+				out_warn = 'Warning! Unsupported speed unit'
+			else:
+				if state != 'OK':
+					rcode = update_rc( 2, rcode )
 
-		# working on normalized data in 'fans'
-		cnt=1
-		if DEBUG:
-			#pp.pprint( answer )
-			pp.pprint( fans )
-
-		for fan in fans:
-			spd  = fan['speed']
-			stat = fan['state']
-
-			if fan['state'] != 'OK':
-				rcode = update_rc( 1, rcode )
-
-			out  += f"Fan {cnt} [{stat}]: {spd:.0f}% "
-			perf += f'fan_{cnt}={spd:.0f}% '
-			cnt+=1
+				out  += f"{name} [{state}] {speed:.0f}%; "
+				perf += f'{name}={speed:.0f}% '
 
 	else:
 		# 
@@ -241,10 +213,6 @@ if args.mode == 'info':
 	else:
 		( rcode, out_text, detail ) = get_info( answer )
 
-	if DEBUG:
-		pp.pprint(answer)
-		pp.pprint(error)
-
 # TODO / feature not required yet
 elif args.mode == 'license':
 	# Login
@@ -256,9 +224,6 @@ elif args.mode == 'license':
 	#else:
 		#( rcode, out_text, detail ) = get_license( answer )
 
-	if DEBUG:
-		pp.pprint(answer)
-		pp.pprint(error)
 
 elif args.mode == 'psu':
 	# Login
@@ -270,8 +235,6 @@ elif args.mode == 'psu':
 		( rcode, out_text, detail ) = set_errormsg( error )
 	else:
 		( rcode, out_text, perfdata ) = check_psu( answer )
-	if DEBUG:
-		pp.pprint(answer)
 
 elif args.mode == 'fan':
 	# Login
@@ -283,8 +246,6 @@ elif args.mode == 'fan':
 		( rcode, out_text, detail ) = set_errormsg( error )
 	else:
 		( rcode, out_text, perfdata ) = check_fan( answer )
-	if DEBUG:
-		pp.pprint(answer)
 
 elif args.mode == 'cpu':
 	# Login
@@ -313,13 +274,11 @@ else:
 	rcode=3
 	out_text='Unknown value for "--mode": {}'.format( args.mode ) 
 
-# url='https://10.56.198.2/api/v6.4.3/monitor/system/psu-status'
-# response = client.get( url,verify=False, cookies=cookie )
-# print( response.text )
-# 
-# url='https://10.56.198.2/api/v6.4.3/monitor/system/fan-status'
-# response = client.get( url,verify=False, cookies=cookie )
-# print( response.text )
+if DEBUG:
+	if answer:
+		pp.pprint(answer)
+	if error:
+		pp.pprint(error)
 
 print( plugin_output(rcode, out_text, detail, perfdata) )
 sys.exit(rcode)
