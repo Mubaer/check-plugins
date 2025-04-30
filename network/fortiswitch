@@ -2,7 +2,8 @@
 #
 # Check FortiSwitch via API
 #
-program_version=str(1.3)
+program_version=str(1.4)
+# Version 1.4 - Fans: Also count 'Good' as 'OK'
 # Version 1.3 - Fixed and simplified Fan-Check (failed for multiple fans)
 # Version 1.2 - finalized PSU check
 # Version 1.1 - template for future license check
@@ -149,7 +150,7 @@ def check_fan(answer):
 			if unit != '%':
 				out_warn = 'Warning! Unsupported speed unit'
 			else:
-				if state != 'OK':
+				if state not in ['OK', 'Good']:
 					rcode = update_rc( 2, rcode )
 
 				out  += f"{name} [{state}] {speed:.0f}%; "
