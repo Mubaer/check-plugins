@@ -20,7 +20,7 @@
 # Example: .\check_VeeamBackupJob.ps1 -ignorejob '99-TestJob','50-Lab'
 
 param([String[]]$exclusivejob, [String[]]$ignorejob, [Switch]$runtime, [Int]$runtime_WARNING = 1440, [Int]$runtime_CRITICAL = 2880)
-$version = "2.5.3" # Login-Fehler an Veeam abgefangen
+$version = "2.5.4" # License Info MITO-konform
 $ErrorActionPreference = "SilentlyContinue"
 $WarningPreference = "SilentlyContinue"
 
@@ -398,15 +398,15 @@ if ($LicenseStatus.Status -ne 'Valid') {
 }
 if ($LicenseStatus.Type -eq 'Perpetual'){
     $OutputContent += "`n"
-    $OutputContent += "(OK) perpetual Veeam License"
+    $OutputContent += "(OK) Veeam License perpetual"
 }
 else {
     $VeeamLicenseExpiration = New-TimeSpan -Start $timeNow -End $LicenseStatus.ExpirationDate
-    if ($VeeamLicenseExpiration.TotalDays -gt 30) {
+    if ($VeeamLicenseExpiration.TotalDays -gt 65) {
         $OutputContent += "`n"
         $OutputContent += "(OK) Veeam License expires in $([math]::Floor($VeeamLicenseExpiration.TotalDays)) days"
     }
-    elseif (($VeeamLicenseExpiration.TotalDays -le 30) -and ($VeeamLicenseExpiration -gt 14)) {
+    elseif (($VeeamLicenseExpiration.TotalDays -le 65) -and ($VeeamLicenseExpiration -gt 35)) {
         $OutputContent += "`n"
         $OutputContent += "(WARNING) Veeam License expires in $([math]::Floor($VeeamLicenseExpiration.TotalDays)) days"
         $ExitCode = Set-ExitCode -code 1    
@@ -443,3 +443,14 @@ Write-Host $OutputContent
 
 $LASTEXITCODE = $ExitCode
 ;exit ($ExitCode)
+
+<#
+(OK) Veeam License expires...
+(WARNING) Veeam License expires...
+(CRITICAL) Veeam License expires...
+(OK) Veeam License perpetual
+ 
+ 
+WARNING < 65 Tage
+CRITICAL < 35 Tage
+#>
