@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+#
+# Display MITO Compliance Status
+#
+program_version=str(0.2)
+# Version 0.2 2025-04-29
+#    beta version with error handling
+# Version 0.1 2025-04-04
+#    test version
+#
+import argparse
+import json
+import time
+import sys, os
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from lib.generic_plugin import *
+
+# parse command line parameters
+cli = argparse.ArgumentParser \
+	(description='Maintain Aruba Central token')
+
+cli.add_argument('--file', '-f',
+		help='JSON file',required = False)
+cli.add_argument('--object', '-o',
+		help='Icinga Object Name', required = True)
+cli.add_argument('--exclude', '-e', action = 'append',
+		help='keys to exclude from output', required = False)
+cli.add_argument('--maxage', '-a', type=int,
+		help='maximum age of json file', required = False)
+cli.add_argument('--version', 
+		action='version', version='%(prog)s ' + program_version)
+cli.add_argument('-d', '--debug',
+        help='enable debugging output', action="store_true")
+args = cli.parse_args()
+
+#### init vars
+# check output
+rcode=0
+out_text=''
+detail=''
+perfdata=''
+
+# arguments / settings
+jfile		= args.file or '/var/tmp/mitocompliance.json'
+maxage		= args.maxage or 7
+excluded	= args.exclude
+# Strip trailing /
+DEBUG		 = args.debug
+
+if DEBUG:
+	import pprint
+	pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
+
+#-----------------------------------------------------------------------
+# Functions
+#-----------------------------------------------------------------------
+
+#-----------------------------------------------------------------------
+#								  MAIN
+#-----------------------------------------------------------------------
+
+#-----------------------------------------------------------------------
+# try to read file
+try:
+	jsonFile = open(jfile, mode='r', encoding='utf-8')
+
+except FileNotFoundError:
+	out='Internal error: Data source not found'
+	output_and_exit( 3, out, None, None )
+
+except PermissionError as e:
+	out='Internal error: no permission to access data file'
+	output_and_exit( 3, out, None, None )
+except:
+	out='Internal error: exception while opening data file for reading'
+	output_and_exit( 3, out, None, None )
+
+# File can be read, get information and check whether token renew is due
+else:
+	try:
+		filedata = json.load(jsonFile)
+	except json.decoder.JSONDecodeError as e:
+		out='Error reading JSON file: ' + str(e)
+		output_and_exit( 3, out, None, None )
+	else:
+		object_dict = filedata.get(args.object)
+		if DEBUG:
+			pp.pprint(object_dict)
+		if not object_dict:
+			output_and_exit( 3, f'Object "{args.object}" not found in data', None, None)
+		outdated=[]
+		int_errors=''
+		for key in object_dict.keys():
+			status = object_dict[key].get('status')
+			text   = object_dict[key].get('text')
+			ts_str   = object_dict[key].get('timestamp')
+
+			# normalize status values
+			if status > 3: status = 3
+
+			# Check age of information
+			try:
+				ts = time.strptime( ts_str, '%Y-%m-%d %H:%M:%S')
+			except ValueError as e:
+				int_errors += f"Internal error on {key}: {e}\n"
+			else:
+				ts_epoch = int( time.strftime( '%s', ts ) )
+				age_days = (time.time() - ts_epoch) / 60**2 / 24
+				if age_days > maxage:
+					outdated.append(key)
+
+			# Output Data
+			status_str = rcstring( status, b='[' )
+			detail += f"{status_str} {text}\n"
+
+		if outdated:
+			detail += f'\n[WARNING] These informations are older than {maxage} days:\n'
+			detail += ', '.join(outdated)
+
+		detail += f"\n{int_errors}"
+#
+#Finally, print check output and exit with rcode
+#
+out_text = 'Compliance Results'
+output_and_exit( rcode, out_text, detail, perfdata )
+
+# vim: ts=4:noexpandtab:sw=4:sts=4:ai:smartindent:filetype=python
+

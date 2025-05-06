@@ -1,5 +1,5 @@
 """common functions for check-plugins"""
-
+import sys
 def rcstring( rc, b='(', lineup=0 ):
     brace = {
             '(': [ '(', ')' ],
@@ -60,4 +60,8 @@ def plugin_output( rc, msg, detail, perfdata ):
     if perfdata:
         outstr+='|' + perfdata
     return outstr
+
+def output_and_exit( rc, msg, detail, perfdata ):
+    print( plugin_output( rc, msg, detail, perfdata ) )
+    sys.exit(rc)
 
