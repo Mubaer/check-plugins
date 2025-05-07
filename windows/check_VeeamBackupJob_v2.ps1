@@ -443,14 +443,3 @@ Write-Host $OutputContent
 
 $LASTEXITCODE = $ExitCode
 ;exit ($ExitCode)
-
-<#
-(OK) Veeam License expires...
-(WARNING) Veeam License expires...
-(CRITICAL) Veeam License expires...
-(OK) Veeam License perpetual
- 
- 
-WARNING < 65 Tage
-CRITICAL < 35 Tage
-#>
