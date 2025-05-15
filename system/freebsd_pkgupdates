@@ -23,6 +23,7 @@
 #
 # Changelog
 #
+# 2024-05-15 - v1.1 change detection method for outdated /var/db/pkg
 # 2022-02-01 - v1.0 by Xin Qu
 #
 
@@ -92,9 +93,9 @@ pkg_locked() {
     TXT_LCK=$(printf "%-${descw}s: %s\n" 'Locked' "$NUM_LOCKED are locked (and probably updatable).")
 }
 
-files=`find $pkgdb/local.sqlite -ctime +$age`
+files=`find $pkgdb/ -type f -ctime -$age`
 
-if [ -z "$files" ]  ; then
+if [ -n "$files" ]  ; then
     pkg_toupdate
     pkg_locked
     pkg_audit
