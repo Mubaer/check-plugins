@@ -53,7 +53,6 @@ def login(host,user,passwd,port=False):
 	url_login = f'https://{host}/logincheck'
 	client = requests.session()
 
-	#payload = "username=mradmin&secretkey=etpGKYccj76QMWPbIKQU"
 	payload = "username={}&secretkey={}".format( user, passwd )
 
 	r = client.post(url_login, data=payload, verify=False)

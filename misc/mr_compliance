@@ -2,7 +2,9 @@
 #
 # Display MITO Compliance Status
 #
-program_version=str(0.2)
+program_version=str(1.0)
+# Version 1.0 2025-05-13
+#	pass through status values
 # Version 0.2 2025-04-29
 #    beta version with error handling
 # Version 0.1 2025-04-04
@@ -52,10 +54,6 @@ if DEBUG:
 	pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
 
 #-----------------------------------------------------------------------
-# Functions
-#-----------------------------------------------------------------------
-
-#-----------------------------------------------------------------------
 #								  MAIN
 #-----------------------------------------------------------------------
 
@@ -91,12 +89,13 @@ else:
 		outdated=[]
 		int_errors=''
 		for key in object_dict.keys():
-			status = object_dict[key].get('status')
-			text   = object_dict[key].get('text')
+			status   = object_dict[key].get('status')
+			text     = object_dict[key].get('text')
 			ts_str   = object_dict[key].get('timestamp')
 
 			# normalize status values
 			if status > 3: status = 3
+			rcode = update_rc( status, rcode )
 
 			# Check age of information
 			try:
@@ -118,6 +117,7 @@ else:
 			detail += ', '.join(outdated)
 
 		detail += f"\n{int_errors}"
+
 #
 #Finally, print check output and exit with rcode
 #
