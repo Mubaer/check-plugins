@@ -27,19 +27,21 @@ try {
     }
 }
 
-Import-Module SQLPS
+Import-Module SQLPS -ErrorAction SilentlyContinue
 $sqlServerName = $env:COMPUTERNAME
 $sqlInstanceName = "VeeamSQL2016"
 $sqlDatabaseName = "VeeamBackup"
 $username = get-content -Path "C:\MRDaten\temp.txt" | Select-Object -index 0
 $password = get-content -Path "C:\MRDaten\temp.txt" | Select-Object -index 1
 $timeNow = Get-Date
-$version = "2.5.4" # Veeam System Check ausgelagert
+$version = "2.6.2" # avoid error messages
 $OutputContent = "`n"
+$ErrorActionPreference= 'silentlycontinue'
+
 
 
 # Check Database type
-$sql_result = Invoke-SqlCmd -Query "SELECT GETDATE() AS TimeOfQuery" -ServerInstance "$sqlServerName\$sqlInstanceName" -Database $sqlDatabaseName -Username $username -Password $password
+try{$sql_result = Invoke-SqlCmd -Query "SELECT GETDATE() AS TimeOfQuery" -ServerInstance "$sqlServerName\$sqlInstanceName" -Database $sqlDatabaseName -Username $username -Password $password}catch{}
 if (!$sql_result){
 Set-Location 'C:\Program Files\PostgreSQL\15\bin\';
 $env:PGPASSWORD = $password
@@ -106,3 +108,4 @@ $OutputContent += "Check version: " + $version
 $OutputContent
 
 $LASTEXITCODE = $ExitCode
+exit ($ExitCode)
