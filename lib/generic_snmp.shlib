@@ -290,16 +290,18 @@ function process_snmp_namedindex {
 function process_snmp_namedindex_flex {
 	#### building indexes
 	# for tables without an 'index' column, use last OID part as index
-	# same es process_snmp_namedindex, but use whole OID subtree as index
+	# same as process_snmp_namedindex, but use whole OID subtree as index
+	# requires: id[name]
 	#
 
 	# build element index. Last OID-Tree-Level is the index
 	local index_oid
 	for key in ${!snmpData[@]} ; do
 		index_oid="$baseOID.${id[name]}"
+		#dbg_msg "testing $key against $index_oid"
 		if [[ $key == "$index_oid".* ]] ; then
-		key=${key/$index_oid\./}
-		elementList+=( $key )
+			key=${key/$index_oid\./}
+			elementList+=( $key )
 		fi
 	done
 	dbg_msg "DEBUG [elementList]: ${elementList[*]}"
@@ -321,8 +323,8 @@ function process_snmp_namedindex_flex {
 	#
 	#
 	#### / building indexes
-	dbg_msg "DEBUG [nameMap]: ${nameMap[*]}"
-	dbg_msg "DEBUG [nameMap]: ${!nameMap[*]}"
+	dbg_msg "DEBUG [nameMap] keys   (oid-value): ${!nameMap[*]}"
+	dbg_msg "DEBUG [nameMap] values (oid-subkey): ${nameMap[*]}"
 }
 # vim: filetype=bash
 
