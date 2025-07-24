@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+
+# This plugin checks the AP connected to
+# a Cisco WLC
+# Tested with WLC .....
+#
+# Author: Xin Qu
+#
+# Version: 0.2 2025-07-24
+#	Release candidate: AccessPoint Status only
+#
+# Version: 0.1 2025-07-24
+#	First test version
+#
+#
+
+# Define Vars
+declare -A snmpData
+declare -A snmpUnit
+declare -A id
+declare -A nameMap
+
+glob_rcode=0
+
+#
+# CLI Parsing
+#
+
+OPTERR=1
+while getopts "H:C:u:x:X:a:A:l:w:c:m:f:F:t:Bhd" OPTION ; do
+	case "${OPTION}" in
+		H) hostname=${OPTARG}		;;
+		C) community="-c ${OPTARG}" ;;
+		u) authuser="-u ${OPTARG}"	;;
+		a) authproto="-a ${OPTARG}" ;;
+		A) authpass="-A ${OPTARG}"	;;
+		x) privproto="-x ${OPTARG}" ;;
+		X) privpass="-X ${OPTARG}"	;;
+		l) seclevel="-l ${OPTARG}"	;;
+		w) warn=${OPTARG}			;;
+		c) crit=${OPTARG}			;;
+		m) mode=${OPTARG}			;;
+		f) filter=${OPTARG}			;;
+		F) neg_filter=${OPTARG}		;;
+		t) tout=${OPTARG}			;;
+		B) nobulk=1					;;
+		h) helpme=1					;;
+		d) debug=1					;;
+	esac
+done
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Load library functions
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+callpath="$(dirname "$0")"
+libdir="${callpath}/../lib"
+
+source $libdir/generic_plugin.shlib
+source $libdir/generic_snmp.shlib
+source $libdir/convert_and_calc.shlib
+
+#######
+# Functions
+#######
+
+function status_stringmap_aps {
+	local numState=$1
+
+	local -a map
+	map[1]='associated'
+	map[2]='disassociating'
+	map[3]='downloading'
+
+	echo "${map[$numState]}"
+}
+
+function status_errormap_aps {
+	local numState=$1
+
+	local -a map
+	map[1]=0
+	map[2]=1
+	map[3]=0
+
+	echo "${map[$numState]}"
+}
+
+function aps_table {
+	local filter=$1
+
+	outmsg='WLAN AccessPoints: '
+	for eName in "${!nameMap[@]}"
+    do
+        if [[  "$eName" =~ $filter ]]
+        then
+			outElements+=(${nameMap[$eName]})
+        fi
+    done
+
+	local -A line_item
+	local -A ap_statesum
+	ap_statesum[1]=0
+	ap_statesum[2]=0
+	ap_statesum[3]=0
+
+    for element in  ${outElements[@]}
+    do
+		detail_line=''
+
+		for item in ${!id[@]}
+		do
+			local value="${snmpData[${baseOID}.${id[$item]}.$element]}"
+			# remove quotes
+			value=${value//\"/}
+			line_item[$item]="$value"
+		done
+
+		detail_line+=$( printf "%-20s S/N: %s Firmware: %s" \
+			${line_item[name]} ${line_item[sn]} ${line_item[version]} )
+
+		# State algo
+		apstate=${line_item[state]}
+		apstate_string=$( status_stringmap_$mode $apstate )
+		state_bystatus=$( status_errormap_$mode $apstate )
+		state_detail_string=$( state_string $state_bystatus )
+
+		glob_rcode=$( set_globalstate $state_bystatus )
+
+		detail_line+=" State: $apstate_string"
+		detail_line="$state_detail_string $detail_line"
+
+		let ap_statesum[$apstate]++
+
+		# merge everything together
+		details+="$detail_line\n"
+	done
+
+	outmsg+="${ap_statesum[1]} associated, ${ap_statesum[2]} disassociating, ${ap_statesum[3]} downloading"
+	details=$( echo -e "$details" | sort -k2 )
+}
+
+#
+# MAIN
+#
+
+#
+# set default values
+#
+mode=${mode:=aps}
+filter=${filter:=.}
+tout=${tout:=20}
+
+check_snmp_args
+check_threshold_args
+
+case $mode in
+	aps)
+		baseOID='.1.3.6.1.4.1.14179.2.2.1.1'
+		id[name]=3
+		id[version]=8
+		id[model]=16
+		id[sn]=17
+		id[state]=6
+		get_snmp_lib
+		#test_errors 'Fans: ' 'fans'
+		process_snmp_namedindex_flex
+		aps_table .
+	;;
+	*)
+		echo "(UNKNOWN): mode '-m $mode' not known" ; exit 3 ;;
+esac
+
+
+#
+# Tell monitoring system what we found out
+#
+trigger_exit
