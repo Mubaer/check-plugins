@@ -1,6 +1,6 @@
-create role mrtest
+create role mrmonitoring
 LOGIN
-PASSWORD '12345';
-grant pg_read_all_data to mrtest;
+PASSWORD 'Pnze5C5evwBsf5NzTwYu';
+grant pg_read_all_data to mrmonitoring;
 
  
