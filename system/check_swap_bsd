@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # Replacement for check_swap binary from the monitoring-plugins package
-# usage: check_swap [-c <crit>[%] -w <warn>[%] -u <unit>]
+# usage: check_swap_bsd [-c <crit>[%] -w <warn>[%] -u <unit>]
 #
 # The percent % sign for thresholds is optional, it can be added for
 # compatibility reasons. Calculations will always be in %, no matter
