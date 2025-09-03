@@ -1,0 +1,64 @@
+#!/bin/sh
+#
+# Replacement for check_swap binary from the monitoring-plugins package
+# usage: check_swap [-c <crit>[%] -w <warn>[%] -u <unit>]
+#
+# The percent % sign for thresholds is optional, it can be added for
+# compatibility reasons. Calculations will always be in %, no matter
+# whether it is added or not.
+#
+# Thresholds are related to FREE space! Example:
+# check_swap -c 80% -w 90%   
+#	--> will trigger "warning" when swap has LESS then 90% FREE
+#	--> will trigger "critical" when swap has LESS then 80% FREE
+#
+# Default unit is 'm' for megabytes. Possible values are 'm', 'k', 'g'.
+#
+# Requires: `swapinfo` `sed`
+# Tested on FreeBSD
+#
+# 2025-09-03 - v1.0 by Xin Qu
+#
+
+OPTERR=1
+while getopts "w:c:u:" OPTION; do
+	case "$OPTION" in
+		c) crit=$OPTARG ;;
+		w) warn=$OPTARG  ;;
+		u) unit=$OPTARG     ;;
+	esac
+done
+
+# Default unit Megabytes
+: ${unit:=m}
+# Allow % sign for thresholds for compatibility with check_swap 
+# from the monitoring plugins package
+crit=${crit%\%}
+warn=${warn%\%}
+
+case $unit in
+	g)	unit_str='GB'; cmd_option='-g';;
+	m)	unit_str='MB'; cmd_option='-m';;
+	k)	unit_str='kB'; cmd_option='-k';;
+	*)	echo "unknown unit '$unit'. Available: [gmk]"
+esac
+
+swapinfo $cmd_option | sed 1d  | while read dev max used free pct crap
+do
+	# Remove % for calculating
+	percent=${pct%\%}
+	percent_free=$(( 100 - percent ))
+
+	if [ "$crit" -a "$warn" ] ; then
+		crit_abs=$(( $max * $crit / 100))
+		warn_abs=$(( $max * $warn / 100))
+
+		if   [ "$free" -lt "$crit_abs" ] ;then state=CRITICAL
+			elif [ "$free" -lt "$warn_abs"  ] ;then state=WARNING
+			else state=OK
+		fi
+	fi
+	output="SWAP $state - ${percent_free}% free ($free $unit_str out of $max $unit_str)"
+	perfdata="swap=${free}${unit_str};${warn_abs};${crit_abs};0;$max"
+	echo "$output|$perfdata"
+done
