@@ -8,6 +8,9 @@
 #
 # Author: Xin Qu
 #
+# Version: 1.2.3 2025-09-03
+#	added exclude-filter for HP-Mode
+#
 # Version: 1.2.2 2025-03-26
 #	Adapting to icingaWebDB: Do not align output columns. 
 #
@@ -147,6 +150,7 @@ function check_hp_element_status {
 	# Requires "filter_entity" to run before
 	local errorStatusOID=$1
 	local outPrefix=$2
+	local exclude_filter=$3
 	local element
 	local eStatus
 	local eName
@@ -165,6 +169,14 @@ function check_hp_element_status {
 		# remove quotes
 		eName=${eName//\"/}
 		
+		if [ "$exclude_filter" ] ; then
+			dbg_msg "applying exclude filter $exclude_filter"
+			if [[ "$eName" =~ $exclude_filter ]] ;then
+				dbg_msg "filtering away $eName, matches $exclude_filter"
+				continue
+			fi
+		fi
+
 		# get error status
 		get_snmp $errorStatusOID.$element
 		eStatus=$( map_hh3cEntityExtErrorStatus ${snmpData[$errorStatusOID.$element]} )
@@ -430,7 +442,7 @@ case $mode in
 		for class in ${classArray[@]} ; do
 			filter_entity_byclass 5 $class
 			className=$( map_className $class )
-			check_hp_element_status $errorStatusOID "[$className] "
+			check_hp_element_status $errorStatusOID "[$className] " "$neg_filter"
 		done
 		;;
 	cisco)
