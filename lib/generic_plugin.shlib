@@ -99,7 +99,8 @@ function state_string() {
 }
 
 function trigger_exit {
-	echo -en "$( state_string $glob_rcode ) $outmsg"
+	# Adapt to IcingDB html interpretation: no alignments and no colon (:)
+	echo -en "$( state_string $glob_rcode n n ) $outmsg"
 	if [ -n "$details" ] ; then echo -en "\n\n$details" ; fi
 	if [ -n "$perfdata" ] ; then echo -en "|$perfdata" ; fi
 	echo
