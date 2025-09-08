@@ -4,6 +4,9 @@
 #
 # Author: Xin Qu
 #
+# Version: 0.2 2025-09-08
+#	+ added units for entity_value()
+#
 # Version: 0.1 2025-09-08
 #	First test version
 #	Checks for Temperature, PSU, Fan, Health
@@ -118,40 +121,39 @@ function status_errormap {
 # Introduced for Synology, hope it works out for other devices also
 function entity_status {
 	local subid=$1
-    local description=$2
+	local description=$2
 
-    local entity_status="${snmpData[${baseOID}.$subid.0]}"
-    local entitystate_string=$( status_stringmap $entity_status $subid)
-    local entitystate_mapped=$( status_errormap $entity_status $subid)
-    local state_string=$( state_string $entitystate_mapped n n )
+	local entity_status="${snmpData[${baseOID}.$subid.0]}"
+	local entitystate_string=$( status_stringmap $entity_status $subid)
+	local entitystate_mapped=$( status_errormap $entity_status $subid)
+	local state_string=$( state_string $entitystate_mapped n n )
 
-    glob_rcode=$( set_globalstate $entitystate_mapped )
-    details+="$state_string $description: $entitystate_string\n"
-    outmsg+="$description $state_string"
+	glob_rcode=$( set_globalstate $entitystate_mapped )
+	details+="$state_string $description: $entitystate_string\n"
+	outmsg+="$description $state_string"
 }
 
-# entity_value SubOID WARN CRIT Description
+# entity_value SubOID Unit WARN CRIT Description
 function entity_value {
 	local subid=$1
-	local warn=$2
-	local crit=$3
-    local description=$4
-	local perf_name=$5
+	local unit=$2
+	local warn=$3
+	local crit=$4
+	local description=$5
+	local perf_name=$6
 
-	echo DBG $perfdata
-
-    local entity_value="${snmpData[${baseOID}.$subid.0]}"
+	local entity_value="${snmpData[${baseOID}.$subid.0]}"
 
 	local value_state=$( calc_state "$entity_value" "$warn" "$crit" )
-    glob_rcode=$( set_globalstate $value_state )
+	glob_rcode=$( set_globalstate $value_state )
 
-    #local entitystate_string=$( status_stringmap $entity_status $subid)
-    #local entitystate_mapped=$( status_errormap $entity_status $subid)
-    local state_string=$( state_string $value_state n n )
+	#local entitystate_string=$( status_stringmap $entity_status $subid)
+	#local entitystate_mapped=$( status_errormap $entity_status $subid)
+	local state_string=$( state_string $value_state n n )
 
-    #glob_rcode=$( set_globalstate $entitystate_mapped )
-    details+="$state_string $description: $entity_value\n"
-    outmsg+="$description $state_string"
+	#glob_rcode=$( set_globalstate $entitystate_mapped )
+	details+="$state_string $description: $entity_value $unit\n"
+	outmsg+="$description $state_string"
 
 	if [ "$perf_name" ] ; then
 		perfdata+="$perf_name=$entity_value;$warn;$crit"
@@ -172,30 +174,42 @@ tout=${tout:=20}
 check_snmp_args
 check_threshold_args
 
-baseOID='.1.3.6.1.4.1.6574.1'
-get_snmp_lib
-
 case $mode in
 	health)
+		baseOID='.1.3.6.1.4.1.6574.1'
+		get_snmp_lib
+
 		outmsg+="Health: "
 		entity_status 1 "System Status"
 		;;
 	psu)
+		baseOID='.1.3.6.1.4.1.6574.1'
+		get_snmp_lib
+
 		outmsg+="PSUs: "
 		entity_status 3 "Power Status"
 		;;
 	fan)
+		# only fetch fan subOID
+		baseOID='.1.3.6.1.4.1.6574.1.4'
+		get_snmp_lib
+
+		# change base for processing
+		baseOID='.1.3.6.1.4.1.6574.1'
+
 		outmsg+="Fans: "
 		entity_status 4.1 "System Fans"
 		outmsg+=", "
 		entity_status 4.2 "CPU Fans"
 		;;
 	temp*)
+		baseOID='.1.3.6.1.4.1.6574.1'
+		get_snmp_lib
+
 		: ${warn:=60}
 		: ${crit:=70}
-		echo $warn $crit thresholds
 		outmsg+="Temperature: "
-		entity_value 2 "$warn" "$crit" "Disk Station" temp
+		entity_value 2 '°C' "$warn" "$crit" "Disk Station" temp
 		;;
 	*)
 		echo "(UNKNOWN): mode '-m $mode' not known" ; exit 3 ;;
