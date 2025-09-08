@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 
-# This plugin checks the PSU of various device types
+# This plugin checks Synology NAS
 #
 # Author: Xin Qu
 #
 # Version: 0.1 2025-09-08
 #	First test version
-#	Support for aruba cx
+#	Checks for Temperature, PSU, Fan, Health
 #
 
 # Define Vars
