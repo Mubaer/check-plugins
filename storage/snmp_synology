@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+
+# This plugin checks Synology NAS
+#
+# Author: Xin Qu
+#
+# Version: 0.2 2025-09-08
+#	+ added units for entity_value()
+#
+# Version: 0.1 2025-09-08
+#	First test version
+#	Checks for Temperature, PSU, Fan, Health
+#
+
+# Define Vars
+declare -A snmpData
+declare -A snmpUnit
+declare -A id
+declare -A nameMap
+
+glob_rcode=0
+
+#
+# CLI Parsing
+#
+
+OPTERR=1
+while getopts "H:C:u:x:X:a:A:l:w:c:m:f:F:t:Bhd" OPTION ; do
+	case "${OPTION}" in
+		H) hostname=${OPTARG}		;;
+		C) community="-c ${OPTARG}" ;;
+		u) authuser="-u ${OPTARG}"	;;
+		a) authproto="-a ${OPTARG}" ;;
+		A) authpass="-A ${OPTARG}"	;;
+		x) privproto="-x ${OPTARG}" ;;
+		X) privpass="-X ${OPTARG}"	;;
+		l) seclevel="-l ${OPTARG}"	;;
+		w) warn=${OPTARG}			;;
+		c) crit=${OPTARG}			;;
+		m) mode=${OPTARG}			;;
+		f) filter=${OPTARG}			;;
+		F) neg_filter=${OPTARG}		;;
+		t) tout=${OPTARG}			;;
+		B) nobulk=1					;;
+		h) helpme=1					;;
+		d) debug=1					;;
+	esac
+done
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Load library functions
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+callpath="$(dirname "$0")"
+libdir="${callpath}/../lib"
+
+source $libdir/generic_plugin.shlib
+source $libdir/generic_snmp.shlib
+source $libdir/convert_and_calc.shlib
+
+#######
+# Functions
+#######
+
+function status_stringmap {
+	local numState=$1
+	local entity=$2
+
+	local -a map
+	case $entity in
+		1)
+			# System
+			map[1]='System functionals normally.'
+			map[2]='Volume has crashed.'
+			;;
+		3)
+			# PSUs
+			map[1]='All power supplies functional normally.'
+			map[2]='One of power supply has failed.'
+			;;
+		4.1)
+			# System Fans
+			map[1]='All Internal fans functional normally.'
+			map[2]='One of internal fan stopped.'
+			;;
+		4.2)
+			# CPU Fans
+			map[1]='All CPU fans functional normally.'
+			map[2]='One of CPU fan stopped.'
+			;;
+	esac
+
+	echo "${map[$numState]}"
+}
+
+function status_errormap {
+	local numState=$1
+	local entity=$2
+
+	local -a map
+	case $entity in
+		[13])
+			# System, PSU
+			map[1]=0
+			map[2]=2
+			;;
+		4.?)
+			# System, PSU
+			map[1]=0
+			map[2]=2
+			;;
+		*)
+			# something went wrong!
+			echo 3
+	esac
+
+	echo "${map[$numState]}"
+}
+
+# For single fan OIDs
+# Introduced for Synology, hope it works out for other devices also
+function entity_status {
+	local subid=$1
+	local description=$2
+
+	local entity_status="${snmpData[${baseOID}.$subid.0]}"
+	local entitystate_string=$( status_stringmap $entity_status $subid)
+	local entitystate_mapped=$( status_errormap $entity_status $subid)
+	local state_string=$( state_string $entitystate_mapped n n )
+
+	glob_rcode=$( set_globalstate $entitystate_mapped )
+	details+="$state_string $description: $entitystate_string\n"
+	outmsg+="$description $state_string"
+}
+
+# entity_value SubOID Unit WARN CRIT Description
+function entity_value {
+	local subid=$1
+	local unit=$2
+	local warn=$3
+	local crit=$4
+	local description=$5
+	local perf_name=$6
+
+	local entity_value="${snmpData[${baseOID}.$subid.0]}"
+
+	local value_state=$( calc_state "$entity_value" "$warn" "$crit" )
+	glob_rcode=$( set_globalstate $value_state )
+
+	#local entitystate_string=$( status_stringmap $entity_status $subid)
+	#local entitystate_mapped=$( status_errormap $entity_status $subid)
+	local state_string=$( state_string $value_state n n )
+
+	#glob_rcode=$( set_globalstate $entitystate_mapped )
+	details+="$state_string $description: $entity_value $unit\n"
+	outmsg+="$description $state_string"
+
+	if [ "$perf_name" ] ; then
+		perfdata+="$perf_name=$entity_value;$warn;$crit"
+	fi
+}
+
+#
+# MAIN
+#
+
+#
+# set default values
+#
+mode=${mode:=health}
+filter=${filter:=.}
+tout=${tout:=20}
+
+check_snmp_args
+check_threshold_args
+
+case $mode in
+	health)
+		baseOID='.1.3.6.1.4.1.6574.1'
+		get_snmp_lib
+
+		outmsg+="Health: "
+		entity_status 1 "System Status"
+		;;
+	psu)
+		baseOID='.1.3.6.1.4.1.6574.1'
+		get_snmp_lib
+
+		outmsg+="PSUs: "
+		entity_status 3 "Power Status"
+		;;
+	fan)
+		# only fetch fan subOID
+		baseOID='.1.3.6.1.4.1.6574.1.4'
+		get_snmp_lib
+
+		# change base for processing
+		baseOID='.1.3.6.1.4.1.6574.1'
+
+		outmsg+="Fans: "
+		entity_status 4.1 "System Fans"
+		outmsg+=", "
+		entity_status 4.2 "CPU Fans"
+		;;
+	temp*)
+		baseOID='.1.3.6.1.4.1.6574.1'
+		get_snmp_lib
+
+		: ${warn:=60}
+		: ${crit:=70}
+		outmsg+="Temperature: "
+		entity_value 2 '°C' "$warn" "$crit" "Disk Station" temp
+		;;
+	*)
+		echo "(UNKNOWN): mode '-m $mode' not known" ; exit 3 ;;
+esac
+
+
+#
+# Tell monitoring system what we found out
+#
+trigger_exit
