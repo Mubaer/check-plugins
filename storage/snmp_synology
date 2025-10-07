@@ -4,6 +4,9 @@
 #
 # Author: Xin Qu
 #
+# Version: 0.4 2025-10-07
+#	+ bugfix in perfdata for disks
+#
 # Version: 0.3 2025-09-30
 #	+ added disk check: Status and Temperature
 #
@@ -185,7 +188,7 @@ function entity_value {
 	outmsg+="$description $state_string "
 
 	if [ "$perf_name" ] ; then
-		perfdata+="$perf_name=$entity_value;$warn;$crit"
+		perfdata+="'$perf_name'=$entity_value;$warn;$crit "
 	fi
 }
 
