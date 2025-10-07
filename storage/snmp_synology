@@ -260,8 +260,8 @@ case $mode in
 		id[index]=1
 		id[name]=2
 		process_snmp_index
-		: ${warn:=50}
-		: ${crit:=60}
+		: ${warn:=45}
+		: ${crit:=55}
 		check_disk $warn $crit
 		;;
 
