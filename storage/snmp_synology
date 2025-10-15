@@ -4,6 +4,9 @@
 #
 # Author: Xin Qu
 #
+# Version: 1.0 2025-10-15
+#	+ added raid volume support
+#
 # Version: 0.4 2025-10-07
 #	+ bugfix in perfdata for disks
 #
@@ -106,6 +109,41 @@ function status_stringmap {
 	echo "${map[$numState]}"
 }
 
+function status_stringmap_raid {
+	local numState=$1
+	local -a map
+	map[1]='Normal'
+	map[2]='Repairing'
+	map[3]='Migrating'
+	map[4]='Expanding'
+	map[5]='Deleting'
+	map[6]='Creating'
+	map[7]='RaidSyncing'
+	map[8]='RaidParityChecing'
+	map[9]='RaidAssembling'
+	map[10]='Canceling'
+	map[11]='Degraded'
+	map[12]='Crashed'
+	echo "${map[$numState]}"
+}
+
+function status_errormap_raid {
+	local numState=$1
+	map[1]=0
+	map[2]=1
+	map[3]=0
+	map[4]=0
+	map[5]=0
+	map[6]=0
+	map[7]=0
+	map[8]=0
+	map[9]=0
+	map[10]=0
+	map[11]=1
+	map[12]=2
+	echo "${map[$numState]}"
+}
+
 function status_errormap {
 	local numState=$1
 	local entity=$2
@@ -144,6 +182,7 @@ function entity_status {
 	local subid=$1
 	local description=$2
 	local auto_zero_index=$3
+	local override_mapping=$4
 
 	if [ "$auto_zero_index" == 'z' ] ; then
 		local dotzero='.0'
@@ -151,8 +190,8 @@ function entity_status {
 		local dotzero=''
 	fi
 	local entity_status="${snmpData[${baseOID}.${subid}${dotzero}]}"
-	local entitystate_string=$( status_stringmap $entity_status $subid)
-	local entitystate_mapped=$( status_errormap $entity_status $subid)
+	local entitystate_string=$( status_stringmap${override_mapping} $entity_status $subid)
+	local entitystate_mapped=$( status_errormap${override_mapping} $entity_status $subid)
 	local state_string=$( state_string $entitystate_mapped n n )
 
 	glob_rcode=$( set_globalstate $entitystate_mapped )
@@ -169,6 +208,7 @@ function entity_value {
 	local description=$5
 	local perf_name=$6
 	local auto_zero_index=$7
+	local override_mapping=$8
 
 	if [ "$auto_zero_index" == 'z' ] ; then
 		local dotzero='.0'
@@ -192,9 +232,32 @@ function entity_value {
 	fi
 }
 
+function entity_value_raid {
+	local entity_value=$1
+	local unit=$2
+	local warn=$3
+	local crit=$4
+	local description=$5
+	local perf_name=$6
+
+	local value_state=$( calc_state "$entity_value" "$warn" "$crit" )
+	glob_rcode=$( set_globalstate $value_state )
+
+	local state_string=$( state_string $value_state n n )
+
+	#glob_rcode=$( set_globalstate $entitystate_mapped )
+	details+="$state_string $description: $entity_value $unit\n"
+	outmsg+="$description $state_string "
+
+	if [ "$perf_name" ] ; then
+		perfdata+="'$perf_name'=$entity_value;$warn;$crit "
+	fi
+}
+
 function check_disk {
 	local warn=$1
 	local crit=$2
+	local perf_name
 	local disk
 	for disk in "${!nameMap[@]}" ; do
 		disk_id=${nameMap[$disk]}
@@ -205,6 +268,24 @@ function check_disk {
 	done
 }
 
+function check_raid {
+	local warn=$1
+	local crit=$2
+	# Iterate over Raid Volumes
+	local rvol
+	for rvol in "${!nameMap[@]}" ; do
+		local rvol_id=${nameMap[$rvol]}
+		local perf_name="${rvol//\"/}"
+
+		local free="${snmpData[${baseOID}.4.${rvol_id}]}"
+		local total="${snmpData[${baseOID}.5.${rvol_id}]}"
+
+		local used="$(( $total - $free ))"
+		local used_pct=$(( $used * 100 / $total ))
+		entity_status 3.$rvol_id "$rvol Status" 'n' '_raid'
+		entity_value_raid  $used_pct '%' "$warn" "$crit" "$rvol Usage" "$perf_name"
+	done
+}
 
 #
 # MAIN
@@ -266,6 +347,16 @@ case $mode in
 		: ${warn:=45}
 		: ${crit:=55}
 		check_disk $warn $crit
+		;;
+	raid)
+		baseOID='.1.3.6.1.4.1.6574.3.1.1'
+		get_snmp_lib nounit
+		id[index]=1
+		id[name]=2
+		process_snmp_index
+		: ${warn:=90}
+		: ${crit:=95}
+		check_raid $warn $crit
 		;;
 
 	*)
