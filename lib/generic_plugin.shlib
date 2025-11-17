@@ -73,8 +73,10 @@ function set_globalstate() {
 # return string representation of return-code
 function state_string() {
 	local rcode=$1
+	# align = n : do not align status strings (default)
 	local align=${2:-n}
-	local colon=${3:-c}
+	# colon != c : remove colon (default)
+	local colon=${3:-n}
 	local string
 
 	if [ "$align" == 'n' ] ; then
