@@ -51,7 +51,7 @@ exit 1
 if [ "$helpme" == 'y' ] ; then
 	help
 fi
-: ${meraki_url=https://n121.meraki.com/}
+: ${meraki_url=https://n121.dashboard.meraki.com/}
 
 if [ -z "$serial" -o -z "$apikey" ] ; then
 	exit_status 3 "$0: parameter missing"

@@ -23,7 +23,7 @@ if [ -z "$serial" -o -z "$apikey" ] ; then
 	exit $RC
 fi
 
-: ${meraki_url=https://n121.meraki.com/}
+: ${meraki_url=https://n121.dashboard.meraki.com/}
 
 #
 # Get Network-ID of switch

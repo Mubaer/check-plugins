@@ -4,6 +4,8 @@
 #
 # Author: msander
 #
+# Version: 1.0  2025-11-17
+#   adapt output to new IcingaWeb-DB (no ascii-text-alignments)
 # Version: 0.2  2023-04-11
 #   removed useless tab in check output
 # Version: 0.1  2023-03-29
@@ -179,7 +181,7 @@ function check_globalstatus {
             fi
             curStat=`idrac_state ${snmpData[$curOID]}`
         fi
-        loop_line=$( printf "%12s %-22s is %-15s" `state_string $loop_status` \
+        loop_line=$( printf "%s %-22s is %-15s" `state_string $loop_status` \
             "${oid_names[$key]}"  ${curStat^^} )
         details+="  $loop_line\n"
         glob_rcode=$( set_globalstate $loop_status ) 

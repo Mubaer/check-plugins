@@ -2,7 +2,10 @@
 
 # Display SNMP system info for various systems
 #
-# Version: 0.1  2024-11-04
+# Version: 1.0 2025-09-05 
+#   Add synology nas
+#
+# Version: 0.1 2024-11-04
 #   first test version
 #
 
@@ -70,8 +73,15 @@ function system_info {
 		details+=$( printf "%12s: %s" "${nameMap[$index]}" "${snmpData[$baseOID.${id[$index]}]}" )
 		details+="\n"
 		if [ "${nameMap[$index]}" == 'Hostname' ] ;then
-			outmsg="System Info for ${snmpData[$baseOID.${id[$index]}]}"
+			snmpHostname="${snmpData[$baseOID.${id[$index]}]}"
 		fi
+
+	#Create main plugin output, dependend on a "Hostname" in SNMP
+	if [ "$snmpHostname" ] ; then
+		outmsg="System Info for $snmpHostname"
+	else
+		outmsg="System Info for $hostname"
+	fi
 	done
 }
 
@@ -111,6 +121,35 @@ case $mode in
 		id[0]=7.0
 		system_info
 	;;
+	synology_nas)
+		# Information is on different locations
+		mib_nas='1.3.6.1.4.1.6574.1.5'
+		mib_gen='1.3.6.1.2.1.1'
+		baseOID=".$mib_nas"
+		get_snmp_lib nounits
+		baseOID=."$mib_gen"
+		get_snmp_lib nounits
+
+		# Information is on different locations; do not use baseOID
+		# for creating output
+		baseOID=''
+
+		nameMap[5]=Hostname
+		nameMap[4]=Location
+		nameMap[3]=Contact
+		nameMap[2]=Version
+		nameMap[1]=Model
+		nameMap[0]=S/N
+
+		id[5]=${mib_gen}.5.0
+		id[4]=${mib_gen}.6.0
+		id[3]=${mib_gen}.4.0
+		id[2]=${mib_nas}.3.0
+		id[1]=${mib_nas}.1.0
+		id[0]=${mib_nas}.2.0
+		system_info
+	;;
+
     *)
         echo "(UNKNOWN): mode '-m $mode' not known" ; exit 3 ;;
 esac

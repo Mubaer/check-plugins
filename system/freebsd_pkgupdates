@@ -23,6 +23,8 @@
 #
 # Changelog
 #
+# 2025-09-10 - v1.2 bugfix: echo w/o newline to prevent wrong line count
+# 2024-05-15 - v1.1 change detection method for outdated /var/db/pkg
 # 2022-02-01 - v1.0 by Xin Qu
 #
 
@@ -78,8 +80,8 @@ pkg_toupdate() {
 
 pkg_audit() {
     local pkg_vuln=$(pkg audit )
-    NUM_VUL=$(echo "$pkg_vuln" | tail -1 | cut -w -f1 )
-    PKG_NUM_VUL=$(echo "$pkg_vuln" | tail -1 | cut -w -f4 )
+    NUM_VUL=$(echo -n "$pkg_vuln" | tail -1 | cut -w -f1 )
+    PKG_NUM_VUL=$(echo -n "$pkg_vuln" | tail -1 | cut -w -f4 )
     if  [ $NUM_VUL -gt 0 ] ; then
     TXT_AUDIT=$(printf "%-${descw}s: %s\n" 'Vuln.' "$PKG_NUM_VUL packages have $NUM_VUL vulnerabilities.")
         update_status 2
@@ -88,13 +90,13 @@ pkg_audit() {
 
 pkg_locked() {
     local pkg_locked=$(pkg lock -lq)
-    NUM_LOCKED=$(echo "$pkg_locked" | wc -l | cut -w -f2)
+    NUM_LOCKED=$(echo -n "$pkg_locked" | wc -l | cut -w -f2)
     TXT_LCK=$(printf "%-${descw}s: %s\n" 'Locked' "$NUM_LOCKED are locked (and probably updatable).")
 }
 
-files=`find $pkgdb/local.sqlite -ctime +$age`
+files=`find $pkgdb/ -type f -ctime -$age`
 
-if [ -z "$files" ]  ; then
+if [ -n "$files" ]  ; then
     pkg_toupdate
     pkg_locked
     pkg_audit

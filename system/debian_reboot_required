@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Check whether a debian-based linux needs to be rebooted,
+# e.g. after a kernel upgrade
+#
+# Author: Xin Qu
+# Version 0.1
+#    beta test
+#
+
+status_file=/var/run/reboot-required
+
+if [ -f "$status_file" ] ; then
+	long_output=$( head -40 $status_file )
+	stat_str="(WARNING)"
+	output="Reboot required."
+	rc=1
+else
+	stat_str="(OK)"
+	output="No reboot required."
+	rc=0
+fi
+
+echo "$stat_str $output"
+if [ -n "$long_output" ] ; then
+	echo -e "\n$long_output"
+fi
+exit $rc

@@ -2,12 +2,14 @@
 #
 # Check if the installed OS version matches the running kernel version
 #
+# 2025-09-03 - v1.1 added userland version
 # 2021-11-07 - v1.0 by Xin Qu
 
 installed=`freebsd-version -k`
 running=`freebsd-version -r`
+userland=`freebsd-version -u`
 
-msg_start="Running: $running | Installed: $installed"
+msg_start="Running: $running | Installed: $installed | Userland: $userland"
 
 if [ "$installed" == "$running" ] ; then
     echo -e "(OK): $msg_start"

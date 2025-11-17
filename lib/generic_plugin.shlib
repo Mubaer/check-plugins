@@ -73,8 +73,10 @@ function set_globalstate() {
 # return string representation of return-code
 function state_string() {
 	local rcode=$1
+	# align = n : do not align status strings (default)
 	local align=${2:-n}
-	local colon=${3:-c}
+	# colon != c : remove colon (default)
+	local colon=${3:-n}
 	local string
 
 	if [ "$align" == 'n' ] ; then
@@ -99,7 +101,8 @@ function state_string() {
 }
 
 function trigger_exit {
-	echo -en "$( state_string $glob_rcode ) $outmsg"
+	# Adapt to IcingDB html interpretation: no alignments and no colon (:)
+	echo -en "$( state_string $glob_rcode n n ) $outmsg"
 	if [ -n "$details" ] ; then echo -en "\n\n$details" ; fi
 	if [ -n "$perfdata" ] ; then echo -en "|$perfdata" ; fi
 	echo

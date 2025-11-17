@@ -3,7 +3,7 @@
 #  Peter Ziegler Managed IT 7.5.2024                                                                   #
 ########################################################################################################
 
-
+$version = "2.0.5" # localized for english version of WSUS
 $ExitCode = 0
 Import-Module poshwsus
 $connect = Connect-PSWSUSServer -WsusServer localhost -Port 8530
@@ -19,10 +19,8 @@ function Set-ExitCode {
 $errordate = $(Get-Date).AddDays(-10)
 
 
-$neverreported = $(Get-WsusComputer -ToLastReportedStatusTime "01.01.1001"| Where-Object {$_ -notmatch "Es sind keine"} | Measure-Object).count
-$errorsync = $(Get-WsusComputer -ToLastSyncTime $errordate| Where-Object {$_ -notmatch "Es sind keine"} | Measure-Object).count
-$errorreport = $(Get-WsusComputer -ToLastReportedStatusTime $errordate| Where-Object {$_ -notmatch "Es sind keine"} | Measure-Object).count - $neverreported
-
+$errorsync = $(Get-WsusComputer -ToLastSyncTime $errordate | Where-Object {$_ -notmatch "Es sind keine" -and $_ -notmatch "No computers"} | Measure-Object).count
+$errorreport = $(Get-WsusComputer -ToLastReportedStatusTime $errordate | Where-Object {$_ -notmatch "Es sind keine" -and $_ -notmatch "No computers"} | Measure-Object).count
 
 if($errorsync -gt 0 -or $errorreport -gt 0){
 $exitcode = Set-ExitCode -code 2     
@@ -32,8 +30,8 @@ $exitcode = Set-ExitCode -code 2
 $warndate = $(Get-Date).AddDays(-5)
 
 
-$warnsync = $(Get-WsusComputer -ToLastSyncTime $warndate| Where-Object {$_ -notmatch "Es sind keine"} | Measure-Object).count - $errorsync
-$warnreport = $(Get-WsusComputer -ToLastReportedStatusTime $warndate| Where-Object {$_ -notmatch "Es sind keine"} | Measure-Object).count - $errorreport
+$warnsync = $(Get-WsusComputer -ToLastSyncTime $warndate | Where-Object {$_ -notmatch "Es sind keine" -and $_ -notmatch "No computers"} | Measure-Object).count - $errorsync
+$warnreport = $(Get-WsusComputer -ToLastReportedStatusTime $warndate | Where-Object {$_ -notmatch "Es sind keine" -and $_ -notmatch "No computers"} | Measure-Object).count - $errorreport
 
 if($warnsync -gt 0 -or $warnreport -gt 0 -and $errorsync -eq 0 -and $errorreport -eq 0 ){
 $exitcode = Set-ExitCode -code 1     
@@ -45,11 +43,10 @@ $exitcode = Set-ExitCode -code 1
 
 $result =  "WSUS-connect check plugin" + "`r`n"
 $result += "Assets with errors:" + "`r"
-$result += "(WARN) Assets last contact > 5 days: " + $warnsync + "`r"
-$result += "(CRIT) Assets last contact >10 days: " + $errorsync + "`r"
-$result += "(WARN) Assets not reported > 5 days: " + $warnreport + "`r"
-$result += "(CRIT) Assets not reported >10 days: " + $errorreport + "`r"
-$result += "(CRIT) Assets never reported       : " + $neverreported + "`r`n"
+$result += "(WARNING) Assets last contact > 5 days: " + $warnsync + "`r"
+$result += "(CRITICAL) Assets last contact >10 days: " + $errorsync + "`r"
+$result += "(WARNING) Assets not reported > 5 days: " + $warnreport + "`r"
+$result += "(CRITICAL) Assets not reported >10 days: " + $errorreport + "`r`n"
 $result += "WSUS Server Groups:" + "`r"
 
 
@@ -57,15 +54,11 @@ $groups = $(Get-PSWSUSGroup | where {$_.Name -match "MR_Server"}).name
 
 foreach ($group in $groups){
 
-if ($(Get-WsusComputer -ComputerTargetGroups $group) -match "verfügbar" -or $(Get-WsusComputer -ComputerTargetGroups $group) -match "available"){
-$result += $group + ":" + "`t" + "0"  + "`r"
-}else{
+$result += $group + ":" + "`t" + $(Get-WsusComputer -ComputerTargetGroups $group | Where-Object {$_ -notmatch "Es sind keine" -and $_ -notmatch "No computers"} ).Count + "`r"
 
-$result += $group + ":" + "`t" + $(Get-WsusComputer -ComputerTargetGroups $group).Count + "`r"
-}
 }
 
-    
+$result += "`r`n" + "Check version: " + $version    
     
 Write-Host $result
 
