@@ -1,0 +1,14 @@
+CREATE LOGIN mrmonitoring WITH PASSWORD = 'password';
+GO
+
+EXEC sp_addsrvrolemember 'mrmonitoring', 'sysadmin';
+GO
+
+EXEC xp_instance_regwrite N'HKEY_LOCAL_MACHINE',
+    N'Software\Microsoft\MSSQLServer\MSSQLServer',
+    N'LoginMode', REG_DWORD, 2;
+GO
+
+
+
+SQL-Service restart!
