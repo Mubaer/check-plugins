@@ -4,6 +4,9 @@
 #
 # Author: Xin Qu
 #
+# Version: 1.2 2025-12-01
+#   + use filter parameter instead of fixed filter regrex '.'
+#
 # Version: 1.0 2025-04-08
 #   + support for cisco switches
 #
@@ -274,7 +277,7 @@ case $mode in
 		get_snmp_lib
 		test_errors 'PSUs: ' 'PSUs'
 		process_snmp_namedindex_flex
-		psu_table .
+		psu_table $filter
 		;;
 	cisco)
 		baseOID='.1.3.6.1.4.1.9.9.13.1.5.1'
@@ -283,7 +286,7 @@ case $mode in
 		get_snmp_lib
 		test_errors 'PSUs: ' 'PSUs'
 		process_snmp_namedindex
-        psu_table .
+        psu_table $filter
 		;;
 	*)
 		echo "(UNKNOWN): mode '-m $mode' not known" ; exit 3 ;;
