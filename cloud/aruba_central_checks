@@ -2,9 +2,12 @@
 #
 # Run checks against HPE Aruba Networking Central
 #
+# Version 1.2 2025-12-01
+#	added option for excluding APs by S/N
+program_version=str(1.2)
+#
 # Version 1.1 2025-02-11
 #	moved apiRequest to lib
-program_version=str(1.1)
 #
 # Version 1.0 2025-02-11
 #	Various output improvements
@@ -36,6 +39,8 @@ cli.add_argument('--baseurl',
 		help='base URL for our acocunt', required = False)
 cli.add_argument('--dbdir',
 		help='directory where keys are stored', required = False)
+cli.add_argument('--exclude', action = 'append',
+		help='Exclude filter (Serial Numbers)', required = False)
 cli.add_argument('-d', '--debug', 
 		help='enable debugging output', action="store_true")
 cli.add_argument('--version', 
@@ -107,8 +112,11 @@ def readToken( dbDir, clientId ):
 	return None
 
 
-def checkAPs (baseURL, accessToken):
+def checkAPs (baseURL, excludeFilter, accessToken):
 	rcode=0
+	if not excludeFilter:
+		excludeFilter=[]
+
 	# fetch this fields from API
 	fields=','.join( [ 'status', 'firmware_version', 'model', 'site', 'ap_group' ] )
 	url=f'{baseURL}/monitoring/v2/aps?fields={fields}'
@@ -121,9 +129,10 @@ def checkAPs (baseURL, accessToken):
 		if DEBUG: pp.pprint(answer.get('aps'))
 
 		# Output table header
-		head = [ 'Serial', 'STS', 'Name ', 'Firmware', 'Model', 'Site', 'RC' ]
+		head = [ 'Serial', 'STS', 'Name ', 'Firmware', 'Model', 'Site', 'Status' ]
 		table = []
 		cDown = 0	
+		cIgnore = 0
 		errorMap = { 'Up': 0, 'Down': 2 }
 
 		# Loop over AccessPoints
@@ -136,8 +145,15 @@ def checkAPs (baseURL, accessToken):
 
 			# update rcode, cound down APs
 			if ap['rcode'] == 2:
-				rcode = update_rc(2, rcode)
 				cDown += 1
+				# Only count as down and set global status when not ignored
+				if ap.get('serial') not in excludeFilter:
+					rcode = update_rc(2, rcode)
+				else:
+					# Handing ignore case
+					cIgnore += 1
+					ap['icingaStatus'] += ' ignored!'
+
 	
 			# line fields
 			ap_infos = [ ap.get('serial'), ap.get('status'), ap.get('name'), 
@@ -148,12 +164,13 @@ def checkAPs (baseURL, accessToken):
 		# Generate ASCII table for details
 		detail = tabulate(table, headers = head)
 		detail += "\n\nSTS == Aruba central status (raw)"
-		detail += '\nRC == Return code of check plugin (intrepreted)'
 
 		# plugin output (first line)
 		output = 'Number of access points: {}'.format( answer.get('count') )
 		if cDown > 0:
 			output += ', DOWN: {}'.format(cDown)
+			if cIgnore >0:
+				output += ', Ignored: {}'.format(cIgnore)
 		else:
 			output += ', all UP'
 
@@ -179,7 +196,7 @@ def checkAPs (baseURL, accessToken):
 accessToken = readToken( dbDir, clientId )
 
 if args.mode == 'aps':
-	( rcode, out_text, detail) = checkAPs( baseURL, accessToken )
+	( rcode, out_text, detail) = checkAPs( baseURL, args.exclude, accessToken )
 
 
 
