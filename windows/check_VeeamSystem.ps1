@@ -27,14 +27,14 @@ try {
     }
 }
 
-Import-Module SQLPS -ErrorAction SilentlyContinue
+Import-Module SQLServer -ErrorAction SilentlyContinue
 $sqlServerName = $env:COMPUTERNAME
 $sqlInstanceName = "VeeamSQL2016"
 $sqlDatabaseName = "VeeamBackup"
 $username = get-content -Path "C:\MRDaten\temp.txt" | Select-Object -index 0
 $password = get-content -Path "C:\MRDaten\temp.txt" | Select-Object -index 1
 $timeNow = Get-Date
-$version = "2.6.2" # avoid error messages
+$version = "3.0.0" # umgestellt auf Import SQLServer
 $OutputContent = "`n"
 $ErrorActionPreference= 'silentlycontinue'
 
@@ -54,7 +54,7 @@ $activeConfig = "MSSQL"
 $activeConfig = "PSQL"
 }else{
 
-Write-host "(UNKNOWN) Keine Datenbank-Anmeldung möglich"
+Write-host "(UNKNOWN) Keine Datenbank-Anmeldung m�glich"
 
 }
 
