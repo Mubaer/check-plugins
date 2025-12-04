@@ -3,8 +3,8 @@
 ###           Version 1.1             ###
 ### ### ### ### #### #### ### ### ### ###
 
-#$ErrorActionPreference = 'SilentlyContinue'
-#$WarningPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'SilentlyContinue'
+$WarningPreference = 'SilentlyContinue'
 
 try {
     $veeamjobs = Get-VBRJob | Sort LogNameMainPart
