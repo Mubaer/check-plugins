@@ -2,7 +2,10 @@
 #
 # Check Dell Powervault via API
 #
-program_version=str(0.3)
+program_version=str(0.4)
+# Version 0.4
+#	- activate --port option
+#	- improved error handling, catching exceptions
 # Version 0.3 
 #	- write token only after successful login
 # Version 0.2 
@@ -30,6 +33,8 @@ cli.add_argument('--user', '-u', required = True,
 		help='XML API User')
 cli.add_argument('--password', '-p', required = True,
 		help='XML API Password')
+cli.add_argument('--port', '-P', required = False,
+		help='Alternative TCP Port')
 cli.add_argument('--mode', '-m', required = True,
 		choices=['sysinfo', 'volumes', 'sensors', 'diskgroup' ],
 		help='choose which check to perform' )
@@ -48,9 +53,6 @@ cli.add_argument('--version',
 args = cli.parse_args()
 
 DEBUG=args.debug
-import pprint
-pp=pprint.PrettyPrinter(indent=4)
-
 
 #-----------------------------------------------------------------------
 # Functions
@@ -65,19 +67,19 @@ def check_login(host,user,passwd,token,tokenFilePath,port=False):
 			token=fh.read_text()
 		except:
 			if DEBUG: print(f'-------- error reading token from file -----')
-			token = login(host,user,passwd,port=False)
+			token = login(host,user,passwd,port)
 
 		if DEBUG: print(f'-------- token from file: "{token}"')
 
 	# test the token -- either from file or CLI
 	if token:
 		if DEBUG: print('-------- checking token -------')
-		(jr, error) = request( host, token, 'whoami', port=False )
+		(jr, error) = request( host, token, 'whoami', port )
 
 		if DEBUG: pp.pprint( jr )
 		if jr.get('status')[0].get('return-code') != 0:
 			if DEBUG: print('-------- logging in -------')
-			token = login(host,user,passwd,port=False)
+			token = login(host,user,passwd,port)
 			# Write token to cache
 			try:
 				fh.write_text(token)
@@ -89,7 +91,7 @@ def check_login(host,user,passwd,token,tokenFilePath,port=False):
 				if DEBUG: print('-------- token ok -------')
 	# login and get token
 	else:
-		token = login(host,user,passwd,port=False)
+		token = login(host,user,passwd,port)
 
 	if DEBUG: print(f'-------- current token: "{token}"')
 	return token
@@ -100,11 +102,16 @@ def login(host,user,passwd,port=False):
 	url_login = f'https://{host}/api/login'
 
 	header = { 'dataType': 'json' }
-	resp = requests.get( url_login, verify=False, 
-					 auth=( user, passwd ), headers=header )
+	try:
+		resp = requests.get( url_login, verify=False, 
+						 auth=( user, passwd ), headers=header )
+	except:
+		print( plugin_output(3, 'Unable to login!', None, None) )
+		sys.exit(3)
 
-	pp.pprint(resp.json())
-	if resp != None and resp.headers.get('Content-Type', '').find('application/json')> -1:
+	if (resp != None 
+		and resp.headers.get('Content-Type', '').find('application/json')> -1 
+		and resp.json().get('status')):
 
 		# Answer is login OK?
 		api_status = resp.json().get('status')[0].get('return-code')
@@ -116,6 +123,8 @@ def login(host,user,passwd,port=False):
 
 	else:
 		error = resp.text
+		print( plugin_output(3, 'Unexpected answer from device!', error, None) )
+		sys.exit(3)
 
 	token = result.get('status')[0].get('response')
 
@@ -131,7 +140,13 @@ def request(host, token, function, port=False):
 
 	url_func = f'https://{host}/api/{function}'
 
-	resp = requests.get( url_func, verify=False, headers=header )
+	try:
+		resp = requests.get( url_func, verify=False, headers=header )
+	except:
+		out_text = 'Could not connect to device'
+		detail = 'Check port number, address, firewall.'
+		print( plugin_output(3, out_text, detail, None) )
+		sys.exit(3)
 
 	if resp != None and (
 			'application/json' in resp.headers.get('Content-Type', '')
@@ -155,7 +170,14 @@ if DEBUG:
 
 # Token file(name) and login
 tokenFilePath = args.cachedir + '/' + args.hostname + '.token'
-token = check_login( args.hostname, args.user, args.password, args.token, tokenFilePath)
+# Set alternative TCP Port
+tcp_port = args.port
+
+## 1st, login and get token
+token = check_login( args.hostname, args.user, args.password, args.token, tokenFilePath, tcp_port)
+
+
+## 2nd, execute requested check mode
 
 if args.mode == 'diskgroups':
 	# Check token
