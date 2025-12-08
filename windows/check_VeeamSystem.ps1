@@ -27,14 +27,14 @@ try {
     }
 }
 
-Import-Module SQLServer -ErrorAction SilentlyContinue
+Import-Module SQLPS -ErrorAction SilentlyContinue
 $sqlServerName = $env:COMPUTERNAME
 $sqlInstanceName = "VeeamSQL2016"
 $sqlDatabaseName = "VeeamBackup"
 $username = get-content -Path "C:\MRDaten\temp.txt" | Select-Object -index 0
 $password = get-content -Path "C:\MRDaten\temp.txt" | Select-Object -index 1
 $timeNow = Get-Date
-$version = "3.0.0" # umgestellt auf Import SQLServer
+$version = "2.5.0" # 
 $OutputContent = "`n"
 $ErrorActionPreference= 'silentlycontinue'
 
