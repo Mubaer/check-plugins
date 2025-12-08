@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 #
-# Check FortiSwitch via API
+# Check Dell Powervault via API
 #
-program_version=str(0.2)
+program_version=str(0.3)
+# Version 0.3 
+#	- write token only after successful login
 # Version 0.2 
 #	- handling token and (failed) logins
 #	- mode 'sysinfo'
@@ -29,6 +31,7 @@ cli.add_argument('--user', '-u', required = True,
 cli.add_argument('--password', '-p', required = True,
 		help='XML API Password')
 cli.add_argument('--mode', '-m', required = True,
+		choices=['sysinfo', 'volumes', 'sensors', 'diskgroup' ],
 		help='choose which check to perform' )
 cli.add_argument('--token', 
 		help='use this token instead of getting a new one' )
@@ -75,21 +78,20 @@ def check_login(host,user,passwd,token,tokenFilePath,port=False):
 		if jr.get('status')[0].get('return-code') != 0:
 			if DEBUG: print('-------- logging in -------')
 			token = login(host,user,passwd,port=False)
+			# Write token to cache
+			try:
+				fh.write_text(token)
+			except:
+				if DEBUG: print('-------- writing token file -------')
+				print( plugin_output(3, 'Unable to write token file!', None, None) )
+				sys.exit(3)
 
-		if DEBUG: print('-------- token ok -------')
+				if DEBUG: print('-------- token ok -------')
 	# login and get token
 	else:
 		token = login(host,user,passwd,port=False)
 
 	if DEBUG: print(f'-------- current token: "{token}"')
-	# Write token to cache
-	try:
-		fh.write_text(token)
-	except:
-		print( plugin_output(3, 'Unable to write token file!', None, None) )
-		sys.exit(3)
-
-
 	return token
 
 def login(host,user,passwd,port=False):
@@ -173,7 +175,7 @@ if args.mode == 'diskgroups':
 
 
 
-elif args.mode == 'sensor':
+elif args.mode == 'sensors':
 	# Check token
 
 	(jr, error) = request( args.hostname, token, 'show/sensor-status' )
@@ -228,8 +230,10 @@ else:
 
 if DEBUG:
 	if jr:
+		print('----------- JSON Response ---------------')
 		pp.pprint(jr)
 	if error:
+		print('----------- Request Error ---------------')
 		pp.pprint(error)
 
 print( plugin_output(rcode, out_text, detail, perfdata) )
