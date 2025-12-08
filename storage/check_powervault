@@ -61,7 +61,7 @@ def check_login(host,user,passwd,token,tokenFilePath,port=False):
 		try:
 			token=fh.read_text()
 		except:
-			print(f'-------- error reading token from file -----')
+			if DEBUG: print(f'-------- error reading token from file -----')
 			token = login(host,user,passwd,port=False)
 
 		if DEBUG: print(f'-------- token from file: "{token}"')
@@ -101,7 +101,6 @@ def login(host,user,passwd,port=False):
 	resp = requests.get( url_login, verify=False, 
 					 auth=( user, passwd ), headers=header )
 
-	print('####   JSON login ####')
 	pp.pprint(resp.json())
 	if resp != None and resp.headers.get('Content-Type', '').find('application/json')> -1:
 
