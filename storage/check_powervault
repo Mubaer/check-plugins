@@ -2,7 +2,10 @@
 #
 # Check Dell Powervault via API
 #
-program_version=str(0.4)
+program_version=str(0.5)
+# Version 0.5
+#	- bugfix: store token after login
+#	- finalized sensors
 # Version 0.4
 #	- activate --port option
 #	- improved error handling, catching exceptions
@@ -66,9 +69,17 @@ def check_login(host,user,passwd,token,tokenFilePath,port=False):
 		try:
 			token=fh.read_text()
 		except:
-			if DEBUG: print(f'-------- error reading token from file -----')
+			if DEBUG: print(f'-------- error reading token from file, logging in -----')
 			token = login(host,user,passwd,port)
+			# Writing token to cache
+			try:
+				if DEBUG: print('-------- try writing token file -------')
+				fh.write_text(token)
+			except:
+				print( plugin_output(3, 'Unable to write token file!', None, None) )
+				sys.exit(3)
 
+		# put this behind first expect (finally?)
 		if DEBUG: print(f'-------- token from file: "{token}"')
 
 	# test the token -- either from file or CLI
@@ -203,18 +214,31 @@ elif args.mode == 'sensors':
 	(jr, error) = request( args.hostname, token, 'show/sensor-status' )
 
 	infos = {
-		'container':	'Container',
-		'sensor-name':	'Name',
-		'sensor-type':	'Type',
-		'status':		'Status',
-		'value':		'Value'
+		'container':	[15, 'Container'],
+		'status':		[6,  'Status'],
+		'sensor-type':	[15, 'Type'],
+		'value':		[11,  'Value'],
+		'sensor-name':	[20, 'Name'],
 		}
 
+	for item in infos.keys():
+		length = infos[item][0]
+		title = infos[item][1]
+		detail += f'{title:{length}}  '
+	detail += '\n\n'
+	
+	sensors_all=0
+	sensors_ok=0
+	sensors_problem=0
 	for sensor in jr.get('sensors'):
+		sensors_all+=1
 		for item in infos.keys():
-			label = infos[item] + ':'
+			#label = infos[item] + ':'
+			length = infos[item][0]
 			value = sensor.get( item )
-			detail += f'{label:15}\t{value}\n'
+			detail += f'{value:{length}}  '
+		detail += '\n'
+	out_text = f'Sensors: {sensors_all} Checked'
 
 elif args.mode == 'volumes':
 	# Check token
