@@ -3,6 +3,9 @@
 # Check Dell Powervault via API
 #
 program_version=str(0.5)
+# Version 0.6
+#	- added return code handling
+#	- added mode 'psu'
 # Version 0.5
 #	- bugfix: store token after login
 #	- finalized sensors
@@ -39,7 +42,7 @@ cli.add_argument('--password', '-p', required = True,
 cli.add_argument('--port', '-P', required = False,
 		help='Alternative TCP Port')
 cli.add_argument('--mode', '-m', required = True,
-		choices=['sysinfo', 'volumes', 'sensors', 'diskgroup' ],
+		choices=['sysinfo', 'volumes', 'sensors', 'diskgroup', 'psu' ],
 		help='choose which check to perform' )
 cli.add_argument('--token', 
 		help='use this token instead of getting a new one' )
@@ -191,8 +194,6 @@ token = check_login( args.hostname, args.user, args.password, args.token, tokenF
 ## 2nd, execute requested check mode
 
 if args.mode == 'diskgroups':
-	# Check token
-
 	(jr, error) = request( args.hostname, token, 'show/disk-groups' )
 
 	keys = [ 'name', 'health', 'health-numeric', 'raw-size',
@@ -209,9 +210,23 @@ if args.mode == 'diskgroups':
 
 
 elif args.mode == 'sensors':
-	# Check token
-
 	(jr, error) = request( args.hostname, token, 'show/sensor-status' )
+
+	items_all=0
+	items_ok=0
+	items_problem=0
+
+	# mapping for 'status-numeric'
+	status_map = {
+		0: 0,       # 0: Unsupported
+		1: 0,       # 1: OK
+		2: 2,       # 2: Critical
+		3: 1,       # 3: Warning
+		4: 2,       # 4: Unrecoverable
+		5: 0,       # 5: Not Installed
+		6: 3,       # 6: Unknown
+		7: 0,       # 7: Unavailable
+		}
 
 	infos = {
 		'container':	[15, 'Container'],
@@ -219,37 +234,41 @@ elif args.mode == 'sensors':
 		'sensor-type':	[15, 'Type'],
 		'value':		[11,  'Value'],
 		'sensor-name':	[20, 'Name'],
+		'status-numeric': [0, 'status-numeric' ],
 		}
 
+	# Pad colored status point
+	detail += '  '
 	for item in infos.keys():
+		if item == 'status-numeric': continue
 		length = infos[item][0]
 		title = infos[item][1]
 		detail += f'{title:{length}}  '
 	detail += '\n\n'
 	
-	sensors_all=0
-	sensors_ok=0
-	sensors_problem=0
 	for sensor in jr.get('sensors'):
-		sensors_all+=1
+		items_all+=1
+		entity_rc = sensor.get( 'status-numeric' )
+		detail += rcstring( status_map[entity_rc]) + ' '
+		rcode = update_rc( status_map[entity_rc], rcode )
+
+		if status_map[entity_rc] == 0:
+			items_ok+=1
+		else:
+			items_problem+=1
+
 		for item in infos.keys():
-			#label = infos[item] + ':'
+			if item == 'status-numeric': continue
 			length = infos[item][0]
 			value = sensor.get( item )
 			detail += f'{value:{length}}  '
 		detail += '\n'
-	out_text = f'Sensors: {sensors_all} Checked'
+	out_text = f'Sensors: {items_all} Checked, {items_ok} OK, {items_problem} with problems'
 
 elif args.mode == 'volumes':
-	# Check token
-
 	(jr, error) = request( args.hostname, token, 'show/volumes' )
 
 elif args.mode == 'sysinfo':
-	# Login
-	# Check token
-	
-	# jr == JSON Response
 	(jr, error) = request( args.hostname, token, 'show/system' )
 
 	infos = {
@@ -269,6 +288,62 @@ elif args.mode == 'sysinfo':
 
 	out_addition = jr.get('system')[0].get( 'system-name' ) 
 	out_text = f"System Info for '{out_addition}"
+
+elif args.mode == 'psu':
+	(jr, error) = request( args.hostname, token, 'show/power-supplies' )
+
+	items_all=0
+	items_ok=0
+	items_problem=0
+	rcode=0
+
+	status_map = {
+		0: 0,       # 0: OK
+		1: 1,       # 1: Degraded
+		2: 2,       # 2: Fault
+		3: 3,       # 3: Unknown
+		4: 0,       # 4: N/A
+		}
+
+	infos = {
+			'name':				[15, 'Name'],
+			'health':			[6,  'Status'],
+			'location':			[20, 'Location'],
+			'health-numeric':	[0,  'health-numeric'],
+			}
+
+	# Pad colored status point
+	detail += '  '
+	for item in infos.keys():
+		if item == 'health-numeric': continue
+		length = infos[item][0]
+		title = infos[item][1]
+		detail += f'{title:{length}}  '
+	detail += '\n\n'
+
+	# Note: healt-numeric corresponds with icinga rc codes:
+	# 0: OK 1: Degraded 2: Fault 3: Unknown 4: N/A
+
+	for entity in jr.get('power-supplies'):
+		items_all+=1
+		entity_rc = entity.get( 'health-numeric' )
+		detail += rcstring( status_map[entity_rc]) + ' '
+		rcode = update_rc( status_map[entity_rc], rcode )
+
+		if status_map[entity_rc] == 0:
+			items_ok+=1
+		else:
+			items_problem+=1
+
+		for item in infos.keys():
+			if item == 'health-numeric': continue
+			#label = infos[item] + ':'
+			length = infos[item][0]
+			value = entity.get( item )
+			detail += f'{value:{length}}  '
+		detail += '\n'
+	out_text = f'PSUs: {items_all} Checked, {items_ok} OK, {items_problem} with problems'
+
 
 else:
 	rcode=3
