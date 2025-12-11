@@ -1,3 +1,8 @@
+param(
+    $veeamdbuser,
+    $veeamdbpass
+    )
+
 $ExitCode = 0
 function Set-ExitCode {
     param ($code)
@@ -31,10 +36,17 @@ Import-Module SQLPS -ErrorAction SilentlyContinue
 $sqlServerName = $env:COMPUTERNAME
 $sqlInstanceName = "VeeamSQL2016"
 $sqlDatabaseName = "VeeamBackup"
+
+if($veeamdbuser -and $veeamdbpass){
+$username = $veeamdbuser
+$password = $veeamdbpass
+}else{
 $username = get-content -Path "C:\MRDaten\temp.txt" | Select-Object -index 0
 $password = get-content -Path "C:\MRDaten\temp.txt" | Select-Object -index 1
+}
+
 $timeNow = Get-Date
-$version = "2.5.0" # 
+$version = "3.0.0" # import credentials from Icinga
 $OutputContent = "`n"
 $ErrorActionPreference= 'silentlycontinue'
 
@@ -46,7 +58,7 @@ if (!$sql_result){
 Set-Location 'C:\Program Files\PostgreSQL\15\bin\';
 $env:PGPASSWORD = $password
 $cmd = "\l"
-$psql_result = @(.\psql -h 127.0.0.1 -U $username -w -d VeeamBackup -c "$cmd")}
+try{$psql_result = @(.\psql -h 127.0.0.1 -U $username -w -d VeeamBackup -c "$cmd")}catch{}}
 
 if($sql_result){
 $activeConfig = "MSSQL"
@@ -54,7 +66,7 @@ $activeConfig = "MSSQL"
 $activeConfig = "PSQL"
 }else{
 
-Write-host "(UNKNOWN) Keine Datenbank-Anmeldung m�glich"
+Write-host "(UNKNOWN) Keine Datenbank-Anmeldung moeglich"
 
 }
 

@@ -19,11 +19,18 @@
 # Example: .\check_VeeamBackupJob.ps1 -ignorejob '99-TestJob'
 # Example: .\check_VeeamBackupJob.ps1 -ignorejob '99-TestJob','50-Lab'
 
-param([String[]]$exclusivejob, [String[]]$ignorejob, [Switch]$runtime, [Int]$runtime_WARNING = 1440, [Int]$runtime_CRITICAL = 2880)
-$version = "3.0.8" # added Veeam Surebackup Jobs
+param(
+    [String[]]$exclusivejob,
+    [String[]]$ignorejob,
+    [Switch]$runtime,
+    [Int]$runtime_WARNING = 1440,
+    [Int]$runtime_CRITICAL = 2880,
+    $veeamdbuser,
+    $veeamdbpass
+    )
+$version = "3.5.0" # umgestellt DB-Credentials kommen von Icinga Engine
 $ErrorActionPreference = "SilentlyContinue"
 $WarningPreference = "SilentlyContinue"
-
 $Transscript_path = "C:\mr_managed_it\Logs\check_VeeamBackupJob." + (Get-Date).ToString("yyyy-MM-dd_HH-mm-ss") + ".txt"
 
 if ($exclusivejob -and $ignorejob) {
@@ -119,17 +126,21 @@ $sqlServerName = $env:COMPUTERNAME
 $sqlInstanceName = "VeeamSQL2016"
 $sqlDatabaseName = "VeeamBackup"
 
+if($veeamdbuser -and $veeamdbpass){
+$username = $veeamdbuser
+$password = $veeamdbpass
+}else{
 $username = get-content -Path "C:\MRDaten\temp.txt" | Select-Object -index 0
 $password = get-content -Path "C:\MRDaten\temp.txt" | Select-Object -index 1
-
+}
 # Check Database type
+$sql_result = ""
 $sql_result = Invoke-SqlCmd -Query "SELECT GETDATE() AS TimeOfQuery" -ServerInstance "$sqlServerName\$sqlInstanceName" -Database $sqlDatabaseName -Username $username -Password $password
 if (!$sql_result){
 Set-Location 'C:\Program Files\PostgreSQL\15\bin\';
 $env:PGPASSWORD = $password
 $cmd = "\l"
 $psql_result = @(.\psql -h 127.0.0.1 -U $username -w -d VeeamBackup -c "$cmd")}
-
 if($sql_result){
 $activeConfig = "MSSQL"
 }elseif($psql_result){
