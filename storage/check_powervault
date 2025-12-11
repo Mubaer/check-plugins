@@ -2,7 +2,9 @@
 #
 # Check Dell Powervault via API
 #
-program_version=str(0.5)
+program_version=str(0.7)
+# Version 0.7
+#	- added mode 'uptime'
 # Version 0.6
 #	- added return code handling
 #	- added mode 'psu'
@@ -12,7 +14,7 @@ program_version=str(0.5)
 # Version 0.4
 #	- activate --port option
 #	- improved error handling, catching exceptions
-# Version 0.3 
+# Version 0.3
 #	- write token only after successful login
 # Version 0.2 
 #	- handling token and (failed) logins
@@ -26,6 +28,7 @@ import os, sys
 import argparse
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from lib.generic_plugin import *
+from lib.datetime import *
 from pathlib import Path
 
 requests.urllib3.disable_warnings()
@@ -42,7 +45,8 @@ cli.add_argument('--password', '-p', required = True,
 cli.add_argument('--port', '-P', required = False,
 		help='Alternative TCP Port')
 cli.add_argument('--mode', '-m', required = True,
-		choices=['sysinfo', 'volumes', 'sensors', 'diskgroup', 'psu' ],
+		choices=['sysinfo', 'volumes', 'sensors', 'diskgroup',
+		   'uptime', 'psu' ],
 		help='choose which check to perform' )
 cli.add_argument('--token', 
 		help='use this token instead of getting a new one' )
@@ -267,6 +271,21 @@ elif args.mode == 'sensors':
 
 elif args.mode == 'volumes':
 	(jr, error) = request( args.hostname, token, 'show/volumes' )
+
+elif args.mode == 'uptime':
+	(jr, error) = request( args.hostname, token, 'show/controller-statistics' )
+
+	out_text += 'Uptime: '
+	for entity in jr.get('controller-statistics'):
+		name = entity.get('durable-id')
+		power_on_duration = entity.get('power-on-time')
+		power_on_total = entity.get('total-power-on-hours')
+		up = sec2hr( power_on_duration )
+		on = hour2hr( float(power_on_total) )
+		out_text += f'{name}: {up} / '
+		detail += f'{name:20} is up for {up} -- total {on}\n'
+		perfdata += '{}={}s;; '.format(name, power_on_duration)
+
 
 elif args.mode == 'sysinfo':
 	(jr, error) = request( args.hostname, token, 'show/system' )
