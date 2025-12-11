@@ -1,0 +1,382 @@
+#!/usr/bin/env python3
+#
+# Check Dell Powervault via API
+#
+program_version=str(0.7)
+# Version 0.7
+#	- added mode 'uptime'
+# Version 0.6
+#	- added return code handling
+#	- added mode 'psu'
+# Version 0.5
+#	- bugfix: store token after login
+#	- finalized sensors
+# Version 0.4
+#	- activate --port option
+#	- improved error handling, catching exceptions
+# Version 0.3
+#	- write token only after successful login
+# Version 0.2 
+#	- handling token and (failed) logins
+#	- mode 'sysinfo'
+#	- experimental modes 'diskgroups', 'volumes'
+# Version 0.1 - initial test
+#
+
+import requests, json
+import os, sys
+import argparse
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from lib.generic_plugin import *
+from lib.datetime import *
+from pathlib import Path
+
+requests.urllib3.disable_warnings()
+# parse command line parameters
+cli = argparse.ArgumentParser \
+	(description='Maintain Aruba Central token')
+
+cli.add_argument('--hostname', '-H', required = True,
+		help='IP or FQDN' )
+cli.add_argument('--user', '-u', required = True,
+		help='XML API User')
+cli.add_argument('--password', '-p', required = True,
+		help='XML API Password')
+cli.add_argument('--port', '-P', required = False,
+		help='Alternative TCP Port')
+cli.add_argument('--mode', '-m', required = True,
+		choices=['sysinfo', 'volumes', 'sensors', 'diskgroup',
+		   'uptime', 'psu' ],
+		help='choose which check to perform' )
+cli.add_argument('--token', 
+		help='use this token instead of getting a new one' )
+cli.add_argument('--cachedir', 
+		help='path to token cache file', default='/var/spool/icinga2/tmp' )
+cli.add_argument('--jsonfile', 
+	help='read xml response from file (for debugging)' )
+cli.add_argument('--warn', '-w', type=int, help='warning threshold' )
+cli.add_argument('--crit', '-c', type=int, help='critical threshold' )
+cli.add_argument('-d', '--debug',
+		help='enable debugging output', action="store_true")
+cli.add_argument('--version',
+		action='version', version='%(prog)s ' + program_version)
+args = cli.parse_args()
+
+DEBUG=args.debug
+
+#-----------------------------------------------------------------------
+# Functions
+#-----------------------------------------------------------------------
+def check_login(host,user,passwd,token,tokenFilePath,port=False):
+
+	# read from file if no token on CLI
+	if not token:
+		if DEBUG: print('-------- reading token -------')
+		fh = Path(tokenFilePath)
+		try:
+			token=fh.read_text()
+		except:
+			if DEBUG: print(f'-------- error reading token from file, logging in -----')
+			token = login(host,user,passwd,port)
+			# Writing token to cache
+			try:
+				if DEBUG: print('-------- try writing token file -------')
+				fh.write_text(token)
+			except:
+				print( plugin_output(3, 'Unable to write token file!', None, None) )
+				sys.exit(3)
+
+		# put this behind first expect (finally?)
+		if DEBUG: print(f'-------- token from file: "{token}"')
+
+	# test the token -- either from file or CLI
+	if token:
+		if DEBUG: print('-------- checking token -------')
+		(jr, error) = request( host, token, 'whoami', port )
+
+		if DEBUG: pp.pprint( jr )
+		if jr.get('status')[0].get('return-code') != 0:
+			if DEBUG: print('-------- logging in -------')
+			token = login(host,user,passwd,port)
+			# Write token to cache
+			try:
+				fh.write_text(token)
+			except:
+				if DEBUG: print('-------- writing token file -------')
+				print( plugin_output(3, 'Unable to write token file!', None, None) )
+				sys.exit(3)
+
+				if DEBUG: print('-------- token ok -------')
+	# login and get token
+	else:
+		token = login(host,user,passwd,port)
+
+	if DEBUG: print(f'-------- current token: "{token}"')
+	return token
+
+def login(host,user,passwd,port=False):
+	if port:
+		host = f'{host}:{port}'
+	url_login = f'https://{host}/api/login'
+
+	header = { 'dataType': 'json' }
+	try:
+		resp = requests.get( url_login, verify=False, 
+						 auth=( user, passwd ), headers=header )
+	except:
+		print( plugin_output(3, 'Unable to login!', None, None) )
+		sys.exit(3)
+
+	if (resp != None 
+		and resp.headers.get('Content-Type', '').find('application/json')> -1 
+		and resp.json().get('status')):
+
+		# Answer is login OK?
+		api_status = resp.json().get('status')[0].get('return-code')
+		if api_status != 1:
+			print( plugin_output(3, 'Unable to login!', None, None) )
+			sys.exit(3)
+		else:
+			result = resp.json()
+
+	else:
+		error = resp.text
+		print( plugin_output(3, 'Unexpected answer from device!', error, None) )
+		sys.exit(3)
+
+	token = result.get('status')[0].get('response')
+
+	return token
+
+def request(host, token, function, port=False):
+	result = None
+	error  = None
+	if port:
+		host = f'{host}:{port}'
+
+	header = { 'dataType': 'json', 'sessionKey': token }
+
+	url_func = f'https://{host}/api/{function}'
+
+	try:
+		resp = requests.get( url_func, verify=False, headers=header )
+	except:
+		out_text = 'Could not connect to device'
+		detail = 'Check port number, address, firewall.'
+		print( plugin_output(3, out_text, detail, None) )
+		sys.exit(3)
+
+	if resp != None and (
+			'application/json' in resp.headers.get('Content-Type', '')
+			):
+		result = resp.json()
+	else:
+		error = resp.text
+
+	return(result, error)
+
+#-----------------------------------------------------------------------
+#								  MAIN
+#-----------------------------------------------------------------------
+
+# init vars?
+rcode=0;out_text='';detail='';perfdata=''
+
+if DEBUG:
+	import pprint
+	pp=pprint.PrettyPrinter(indent=4)
+
+# Token file(name) and login
+tokenFilePath = args.cachedir + '/' + args.hostname + '.token'
+# Set alternative TCP Port
+tcp_port = args.port
+
+## 1st, login and get token
+token = check_login( args.hostname, args.user, args.password, args.token, tokenFilePath, tcp_port)
+
+
+## 2nd, execute requested check mode
+
+if args.mode == 'diskgroups':
+	(jr, error) = request( args.hostname, token, 'show/disk-groups' )
+
+	keys = [ 'name', 'health', 'health-numeric', 'raw-size',
+		'blocksize', 'freespace', 'freespace-numeric', 'pool',
+		'pool-percentage', 'size', 'size-numeric',
+		 'freespace', 'freespace-numeric' 
+		 ]
+	for diskgroup in jr.get('disk-groups'):
+		for key in keys:
+			value = diskgroup[key]
+			detail += f"{key}:  {value}\n"
+		detail += "\n"
+
+
+
+elif args.mode == 'sensors':
+	(jr, error) = request( args.hostname, token, 'show/sensor-status' )
+
+	items_all=0
+	items_ok=0
+	items_problem=0
+
+	# mapping for 'status-numeric'
+	status_map = {
+		0: 0,       # 0: Unsupported
+		1: 0,       # 1: OK
+		2: 2,       # 2: Critical
+		3: 1,       # 3: Warning
+		4: 2,       # 4: Unrecoverable
+		5: 0,       # 5: Not Installed
+		6: 3,       # 6: Unknown
+		7: 0,       # 7: Unavailable
+		}
+
+	infos = {
+		'container':	[15, 'Container'],
+		'status':		[6,  'Status'],
+		'sensor-type':	[15, 'Type'],
+		'value':		[11,  'Value'],
+		'sensor-name':	[20, 'Name'],
+		'status-numeric': [0, 'status-numeric' ],
+		}
+
+	# Pad colored status point
+	detail += '  '
+	for item in infos.keys():
+		if item == 'status-numeric': continue
+		length = infos[item][0]
+		title = infos[item][1]
+		detail += f'{title:{length}}  '
+	detail += '\n\n'
+	
+	for sensor in jr.get('sensors'):
+		items_all+=1
+		entity_rc = sensor.get( 'status-numeric' )
+		detail += rcstring( status_map[entity_rc]) + ' '
+		rcode = update_rc( status_map[entity_rc], rcode )
+
+		if status_map[entity_rc] == 0:
+			items_ok+=1
+		else:
+			items_problem+=1
+
+		for item in infos.keys():
+			if item == 'status-numeric': continue
+			length = infos[item][0]
+			value = sensor.get( item )
+			detail += f'{value:{length}}  '
+		detail += '\n'
+	out_text = f'Sensors: {items_all} Checked, {items_ok} OK, {items_problem} with problems'
+
+elif args.mode == 'volumes':
+	(jr, error) = request( args.hostname, token, 'show/volumes' )
+
+elif args.mode == 'uptime':
+	(jr, error) = request( args.hostname, token, 'show/controller-statistics' )
+
+	out_text += 'Uptime: '
+	for entity in jr.get('controller-statistics'):
+		name = entity.get('durable-id')
+		power_on_duration = entity.get('power-on-time')
+		power_on_total = entity.get('total-power-on-hours')
+		up = sec2hr( power_on_duration )
+		on = hour2hr( float(power_on_total) )
+		out_text += f'{name}: {up} / '
+		detail += f'{name:20} is up for {up} -- total {on}\n'
+		perfdata += '{}={}s;; '.format(name, power_on_duration)
+
+
+elif args.mode == 'sysinfo':
+	(jr, error) = request( args.hostname, token, 'show/system' )
+
+	infos = {
+		'vendor-name': 'Vendor',
+		'system-information': 'Info',
+		'system-name': 'Name',
+		'midplane-serial-number': 'Midplane S/N',
+		'current-node-wwn': 'Node WWN',
+		'system-location': 'Location',
+		'system-contact': 'Contact'
+		}
+
+	for item in infos.keys():
+		label = infos[item] + ':'
+		value = jr.get('system')[0].get( item )
+		detail += f'{label:15}\t{value}\n'
+
+	out_addition = jr.get('system')[0].get( 'system-name' ) 
+	out_text = f"System Info for '{out_addition}"
+
+elif args.mode == 'psu':
+	(jr, error) = request( args.hostname, token, 'show/power-supplies' )
+
+	items_all=0
+	items_ok=0
+	items_problem=0
+	rcode=0
+
+	status_map = {
+		0: 0,       # 0: OK
+		1: 1,       # 1: Degraded
+		2: 2,       # 2: Fault
+		3: 3,       # 3: Unknown
+		4: 0,       # 4: N/A
+		}
+
+	infos = {
+			'name':				[15, 'Name'],
+			'health':			[6,  'Status'],
+			'location':			[20, 'Location'],
+			'health-numeric':	[0,  'health-numeric'],
+			}
+
+	# Pad colored status point
+	detail += '  '
+	for item in infos.keys():
+		if item == 'health-numeric': continue
+		length = infos[item][0]
+		title = infos[item][1]
+		detail += f'{title:{length}}  '
+	detail += '\n\n'
+
+	# Note: healt-numeric corresponds with icinga rc codes:
+	# 0: OK 1: Degraded 2: Fault 3: Unknown 4: N/A
+
+	for entity in jr.get('power-supplies'):
+		items_all+=1
+		entity_rc = entity.get( 'health-numeric' )
+		detail += rcstring( status_map[entity_rc]) + ' '
+		rcode = update_rc( status_map[entity_rc], rcode )
+
+		if status_map[entity_rc] == 0:
+			items_ok+=1
+		else:
+			items_problem+=1
+
+		for item in infos.keys():
+			if item == 'health-numeric': continue
+			#label = infos[item] + ':'
+			length = infos[item][0]
+			value = entity.get( item )
+			detail += f'{value:{length}}  '
+		detail += '\n'
+	out_text = f'PSUs: {items_all} Checked, {items_ok} OK, {items_problem} with problems'
+
+
+else:
+	rcode=3
+	out_text='Unknown value for "--mode": {}'.format( args.mode ) 
+
+if DEBUG:
+	if jr:
+		print('----------- JSON Response ---------------')
+		pp.pprint(jr)
+	if error:
+		print('----------- Request Error ---------------')
+		pp.pprint(error)
+
+print( plugin_output(rcode, out_text, detail, perfdata) )
+sys.exit(rcode)
+
+# vim: ts=4:noexpandtab:sw=4:sts=4:ai:smartindent:filetype=python:nofoldenable
