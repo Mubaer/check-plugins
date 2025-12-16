@@ -26,9 +26,12 @@ param(
     [Int]$runtime_WARNING = 1440,
     [Int]$runtime_CRITICAL = 2880,
     $veeamdbuser,
-    $veeamdbpass
+    $veeamdbpass,
+    $veeamvbruser,
+    $veeamvbrpass
+
     )
-$version = "3.5.0" # umgestellt DB-Credentials kommen von Icinga Engine
+$version = "3.6.0" # umgestellt DB und VBR-Credentials kommen von Icinga Engine
 $ErrorActionPreference = "SilentlyContinue"
 $WarningPreference = "SilentlyContinue"
 $Transscript_path = "C:\mr_managed_it\Logs\check_VeeamBackupJob." + (Get-Date).ToString("yyyy-MM-dd_HH-mm-ss") + ".txt"
@@ -98,7 +101,8 @@ $OutputCount_CRITICAL = 0
 $OutputCount_PENDING = 0
 $OutputCount_UNKNOWN = 0
 $OutputCount_Jobs = 0
-
+Disconnect-VBRServer
+connect-vbrserver -user $veeamvbruser -Password $veeamvbrpass
 $veeam_no_copyjobs = Get-VBRJob
 
 if($veeam_no_copyjobs){

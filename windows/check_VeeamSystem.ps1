@@ -1,9 +1,12 @@
 param(
     $veeamdbuser,
-    $veeamdbpass
+    $veeamdbpass,
+    $veeamvbruser,
+    $veeamvbrpass
     )
 
 $ExitCode = 0
+
 function Set-ExitCode {
     param ($code)
     if ($ExitCode -lt $code) {
@@ -45,8 +48,9 @@ $username = get-content -Path "C:\MRDaten\temp.txt" | Select-Object -index 0
 $password = get-content -Path "C:\MRDaten\temp.txt" | Select-Object -index 1
 }
 
+$version = "3.3.5" # prettify output
 $timeNow = Get-Date
-$version = "3.0.0" # import credentials from Icinga
+
 $OutputContent = "`n"
 $ErrorActionPreference= 'silentlycontinue'
 
@@ -70,6 +74,8 @@ Write-host "(UNKNOWN) Keine Datenbank-Anmeldung moeglich"
 
 }
 
+Disconnect-VBRServer
+connect-vbrserver -user $veeamvbruser -Password $veeamvbrpass
 
 $LicenseStatus = Get-VBRInstalledLicense
 
@@ -109,11 +115,21 @@ catch {
     $VeeamBackupShell = "n/a"
 }
 $OutputContent += "`n"
+$OutputContent += "`n"
+$OutputContent += "License type: " + $LicenseStatus.Type
+$OutputContent += "`n"
+$OutputContent += "License Edition: " + $LicenseStatus.Edition
+$OutputContent += "`n"
+$OutputContent += "Licensed to: " + $LicenseStatus.LicensedTo
+$OutputContent += "`n"
+$OutputContent += "`n"
 $OutputContent += "Veeam.Backup.Core=$VeeamCoreDll"
 $OutputContent += "`n"
 $OutputContent += "Veeam.Backup.Shell=$VeeamBackupShell"
 $OutputContent += "`n"
+$OutputContent += "`n"
 $OutputContent += "Database Type: " + $activeConfig
+$OutputContent += "`n"
 $OutputContent += "`n"
 $OutputContent += "Check version: " + $version
 

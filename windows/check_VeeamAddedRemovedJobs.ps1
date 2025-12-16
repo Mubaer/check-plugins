@@ -3,11 +3,20 @@
 ###           Version 1.1             ###
 ### ### ### ### #### #### ### ### ### ###
 
-$ErrorActionPreference = 'SilentlyContinue'
-$WarningPreference = 'SilentlyContinue'
+#$ErrorActionPreference = 'SilentlyContinue'
+#$WarningPreference = 'SilentlyContinue'
+
+param(
+    $veeamvbruser,
+    $veeamvbrpass
+    )
+
+$version = "3.0.0"
+Disconnect-VBRServer
+connect-vbrserver -user $veeamvbruser -Password $veeamvbrpass
 
 try {
-    $veeamjobs = Get-VBRJob | Sort LogNameMainPart
+    $veeamjobs = Get-VBRJob | Sort-Object LogNameMainPart
 } catch {
     Write-Host "(WARNING) Can't get VBR Jobs"
     ;exit (1)
@@ -19,7 +28,7 @@ If(!(Test-Path $WorkPath))
     ## Create Dir if not exists
     New-Item -ItemType Directory -Force -Path $WorkPath
 }
-cd $WorkPath
+Set-Location $WorkPath
 $filePath = "$WorkPath\check_VeeamAddedRemovedJobs.txt"
 
 $currentJobs = @()
@@ -35,7 +44,7 @@ try {
 $differences = Compare-Object $currentJobs $previousJobs
 $currentJobs | Out-File -FilePath $filePath
 
-if ($differences -eq $null) {
+if ($null -eq $differences) {
     $OutputContent = '(OK) Keine neuen / entfernte Jobs gefunden'
     $ExitCode = 0
 }
@@ -52,7 +61,7 @@ else {
         }
     }
     if ($newJobsContent -ne '') {
-        $OutputContent = '(WARNING) Jobs seit letztem Check hinzugefügt:' + "`n"
+        $OutputContent = '(WARNING) Jobs seit letztem Check hinzugefÃ¼gt:' + "`n"
         $OutputContent += $newJobsContent + "`n"
     }
     if ($oldJobsContent -ne '') {
@@ -62,5 +71,7 @@ else {
     $ExitCode = 1
 }
 
+$OutputContent += "`n"
+$OutputContent += "Check version: " + $version
 Write-Host $OutputContent
 ;exit ($ExitCode)
