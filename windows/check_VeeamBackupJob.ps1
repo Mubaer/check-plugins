@@ -31,7 +31,7 @@ param(
     $veeamvbrpass
 
     )
-$version = "3.6.0" # umgestellt DB und VBR-Credentials kommen von Icinga Engine
+$version = "3.8.0" # find Azure Jobs
 $ErrorActionPreference = "SilentlyContinue"
 $WarningPreference = "SilentlyContinue"
 $Transscript_path = "C:\mr_managed_it\Logs\check_VeeamBackupJob." + (Get-Date).ToString("yyyy-MM-dd_HH-mm-ss") + ".txt"
@@ -196,6 +196,24 @@ $veeamS3Job | Out-File -FilePath $Transscript_path -Append
 Write-Host "(CRITICAL) Failed to connect to database."
 $ExitCode = Set-ExitCode -code 2
 ;Exit (3)
+}
+
+# Find Azure Jobs
+
+if ($activeConfig -eq "MSSQL") {
+
+}elseif($activeConfig -eq "PSQL"){
+Set-Location 'C:\Program Files\PostgreSQL\15\bin\';
+$env:PGPASSWORD = $password
+$sqlAZJob = "SELECT job_name, job_target_type FROM  public.\""backup.model.backups\"" where (job_target_type = '15000')"
+$veeam_AZJobresult = @(.\psql -h 127.0.0.1 -U $username -w -d VeeamBackup -c "$sqlAZjob")
+$numberofaz = ($veeam_AZJobresult | Measure-Object -Line).lines
+For ($i = 2; $i -lt $numberofaz -1; $i++){
+$az_name = ($veeam_AZJobresult[$i]  -split "\|",2)[0]
+$az_name = (($az_name).TrimEnd(" ")).TrimStart(" ")
+$veeamjobs = $veeamjobs + $az_name
+}
+
 }
 
 # Find Copy jobs
