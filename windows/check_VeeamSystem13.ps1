@@ -1,4 +1,12 @@
+param(
+    $veeamdbuser,
+    $veeamdbpass,
+    $veeamvbruser,
+    $veeamvbrpass
+    )
+
 $ExitCode = 0
+
 function Set-ExitCode {
     param ($code)
     if ($ExitCode -lt $code) {
@@ -31,10 +39,18 @@ Import-Module SQLServer -ErrorAction SilentlyContinue
 $sqlServerName = $env:COMPUTERNAME
 $sqlInstanceName = "VeeamSQL2016"
 $sqlDatabaseName = "VeeamBackup"
+
+if($veeamdbuser -and $veeamdbpass){
+$username = $veeamdbuser
+$password = $veeamdbpass
+}else{
 $username = get-content -Path "C:\MRDaten\temp.txt" | Select-Object -index 0
 $password = get-content -Path "C:\MRDaten\temp.txt" | Select-Object -index 1
+}
+
+$version = "3.3.5" # prettify output
 $timeNow = Get-Date
-$version = "3.0.0" # umgestellt auf Import SQLServer
+
 $OutputContent = "`n"
 $ErrorActionPreference= 'silentlycontinue'
 
@@ -46,7 +62,7 @@ if (!$sql_result){
 Set-Location 'C:\Program Files\PostgreSQL\15\bin\';
 $env:PGPASSWORD = $password
 $cmd = "\l"
-$psql_result = @(.\psql -h 127.0.0.1 -U $username -w -d VeeamBackup -c "$cmd")}
+try{$psql_result = @(.\psql -h 127.0.0.1 -U $username -w -d VeeamBackup -c "$cmd")}catch{}}
 
 if($sql_result){
 $activeConfig = "MSSQL"
@@ -54,10 +70,12 @@ $activeConfig = "MSSQL"
 $activeConfig = "PSQL"
 }else{
 
-Write-host "(UNKNOWN) Keine Datenbank-Anmeldung m�glich"
+Write-host "(UNKNOWN) Keine Datenbank-Anmeldung moeglich"
 
 }
 
+Disconnect-VBRServer
+connect-vbrserver -user $veeamvbruser -Password $veeamvbrpass
 
 $LicenseStatus = Get-VBRInstalledLicense
 
@@ -97,11 +115,21 @@ catch {
     $VeeamBackupShell = "n/a"
 }
 $OutputContent += "`n"
+$OutputContent += "`n"
+$OutputContent += "License type: " + $LicenseStatus.Type
+$OutputContent += "`n"
+$OutputContent += "License Edition: " + $LicenseStatus.Edition
+$OutputContent += "`n"
+$OutputContent += "Licensed to: " + $LicenseStatus.LicensedTo
+$OutputContent += "`n"
+$OutputContent += "`n"
 $OutputContent += "Veeam.Backup.Core=$VeeamCoreDll"
 $OutputContent += "`n"
 $OutputContent += "Veeam.Backup.Shell=$VeeamBackupShell"
 $OutputContent += "`n"
+$OutputContent += "`n"
 $OutputContent += "Database Type: " + $activeConfig
+$OutputContent += "`n"
 $OutputContent += "`n"
 $OutputContent += "Check version: " + $version
 

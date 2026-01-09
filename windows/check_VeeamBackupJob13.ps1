@@ -19,11 +19,21 @@
 # Example: .\check_VeeamBackupJob.ps1 -ignorejob '99-TestJob'
 # Example: .\check_VeeamBackupJob.ps1 -ignorejob '99-TestJob','50-Lab'
 
-param([String[]]$exclusivejob, [String[]]$ignorejob, [Switch]$runtime, [Int]$runtime_WARNING = 1440, [Int]$runtime_CRITICAL = 2880)
-$version = "3.1.0" # umgestellt auf Import SQLServer
+param(
+    [String[]]$exclusivejob,
+    [String[]]$ignorejob,
+    [Switch]$runtime,
+    [Int]$runtime_WARNING = 1440,
+    [Int]$runtime_CRITICAL = 2880,
+    $veeamdbuser,
+    $veeamdbpass,
+    $veeamvbruser,
+    $veeamvbrpass
+
+    )
+$version = "3.6.0" # umgestellt DB und VBR-Credentials kommen von Icinga Engine
 $ErrorActionPreference = "SilentlyContinue"
 $WarningPreference = "SilentlyContinue"
-
 $Transscript_path = "C:\mr_managed_it\Logs\check_VeeamBackupJob." + (Get-Date).ToString("yyyy-MM-dd_HH-mm-ss") + ".txt"
 
 if ($exclusivejob -and $ignorejob) {
@@ -91,7 +101,8 @@ $OutputCount_CRITICAL = 0
 $OutputCount_PENDING = 0
 $OutputCount_UNKNOWN = 0
 $OutputCount_Jobs = 0
-
+Disconnect-VBRServer
+connect-vbrserver -user $veeamvbruser -Password $veeamvbrpass
 $veeam_no_copyjobs = Get-VBRJob
 
 if($veeam_no_copyjobs){
@@ -119,9 +130,15 @@ $sqlServerName = $env:COMPUTERNAME
 $sqlInstanceName = "VeeamSQL2016"
 $sqlDatabaseName = "VeeamBackup"
 
+if($veeamdbuser -and $veeamdbpass){
+$username = $veeamdbuser
+$password = $veeamdbpass
+}else{
 $username = get-content -Path "C:\MRDaten\temp.txt" | Select-Object -index 0
 $password = get-content -Path "C:\MRDaten\temp.txt" | Select-Object -index 1
+}
 # Check Database type
+$sql_result = ""
 $sql_result = Invoke-SqlCmd -Query "SELECT GETDATE() AS TimeOfQuery" -ServerInstance "$sqlServerName\$sqlInstanceName" -Database $sqlDatabaseName -Username $username -Password $password
 if (!$sql_result){
 Set-Location 'C:\Program Files\PostgreSQL\15\bin\';
