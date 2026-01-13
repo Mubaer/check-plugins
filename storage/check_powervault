@@ -2,7 +2,9 @@
 #
 # Check Dell Powervault via API
 #
-program_version=str(0.7)
+program_version=str(0.8)
+# Version 0.8
+#	- added mode 'version'
 # Version 0.7
 #	- added mode 'uptime'
 # Version 0.6
@@ -46,7 +48,7 @@ cli.add_argument('--port', '-P', required = False,
 		help='Alternative TCP Port')
 cli.add_argument('--mode', '-m', required = True,
 		choices=['sysinfo', 'volumes', 'sensors', 'diskgroup',
-		   'uptime', 'psu' ],
+		   'uptime', 'psu', 'version' ],
 		help='choose which check to perform' )
 cli.add_argument('--token', 
 		help='use this token instead of getting a new one' )
@@ -307,6 +309,30 @@ elif args.mode == 'sysinfo':
 
 	out_addition = jr.get('system')[0].get( 'system-name' ) 
 	out_text = f"System Info for '{out_addition}"
+
+elif args.mode == 'version':
+	(jr, error) = request( args.hostname, token, 'show/versions/detail' )
+
+	infos = {
+		'bundle-base-version': 'Firmware bundle base version',
+		'bundle-version': 'Firmware bundle version',
+		'hw-rev': 'Controller hardware version',
+		'mc-fw': 'Management Controller firmware version',
+		'sc-fw': 'Storage Controller firmware version',
+		}
+
+	index_backplane=0
+	for backplane in jr.get('versions'):
+		index_backplane+=1
+		oj_name = backplane.get('object-name')
+		detail += f'{oj_name}:\n'
+		for item in infos.keys():
+			label = infos[item] + ':'
+			value = backplane.get( item )
+			detail += f'  {index_backplane} - {label:40} {value}\n'
+		detail += '\n'
+
+	out_text = f"System Version"
 
 elif args.mode == 'psu':
 	(jr, error) = request( args.hostname, token, 'show/power-supplies' )
