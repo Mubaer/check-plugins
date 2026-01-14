@@ -14,3 +14,4 @@ Write-Host $SchTL
 Write-Host "Check version: " $version
 $host.SetShouldExit($exitcode)
 exit
+
