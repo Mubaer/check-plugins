@@ -10,7 +10,8 @@ param(
     $veeamvbruser,
     $veeamvbrpass
     )
-
+$ErrorActionPreference = 'SilentlyContinue'
+$WarningPreference = 'SilentlyContinue'
 $version = "3.0.0"
 Disconnect-VBRServer
 connect-vbrserver -user $veeamvbruser -Password $veeamvbrpass

@@ -31,7 +31,7 @@ param(
     $veeamvbrpass
 
     )
-$version = "3.8.0" # find Azure Jobs
+$version = "3.9.0" # re-format psql strings without \
 $ErrorActionPreference = "SilentlyContinue"
 $WarningPreference = "SilentlyContinue"
 $Transscript_path = "C:\mr_managed_it\Logs\check_VeeamBackupJob." + (Get-Date).ToString("yyyy-MM-dd_HH-mm-ss") + ".txt"
@@ -172,7 +172,7 @@ $veeam_S3Jobresult.job_name | Out-File -FilePath $Transscript_path -Append
 }elseif($activeConfig -eq "PSQL"){
 Set-Location 'C:\Program Files\PostgreSQL\15\bin\';
 $env:PGPASSWORD = $password
-$s3repos = "SELECT name, type FROM public.\""backuprepositories\"" where type = '10';"
+$s3repos = "SELECT name, type FROM public.""backuprepositories"" where type = '10';"
 $resultRepos = @(.\psql -h 127.0.0.1  -U $username -w -d VeeamBackup -c "$s3repos")
 $numberofrepos = ($resultRepos | Measure-Object -Line).lines
 if($numberofrepos -ge 4){
@@ -181,7 +181,7 @@ $numberofrepos--
 For ($i = 2; $i -le $numberofrepos; $i++) { 
 $repo_name = ($resultRepos[$i]  -split "\|",2)[0]
 $repo_name = (($repo_name).TrimEnd(" ")).TrimStart(" ")
-if ($repo_name -ne "(0 Zeilen)"){$sqlS3Job = "SELECT job_name, job_type FROM  public.\""backup.model.jobsessions\"" where (job_name like '$repo_name Offload') order by creation_time desc limit 1"
+if ($repo_name -ne "(0 Zeilen)"){$sqlS3Job = "SELECT job_name, job_type FROM  public.""backup.model.jobsessions"" where (job_name like '$repo_name Offload') order by creation_time desc limit 1"
 $veeam_S3Jobresult = @(.\psql -h 127.0.0.1 -U $username -w -d VeeamBackup -c "$sqls3job")}
 if ($veeam_S3Jobresult[2] -notlike "(0 Zeilen)"){
 $veeamS3Job = ($veeam_S3Jobresult[2]  -split "\|",2)[0]
@@ -205,7 +205,7 @@ if ($activeConfig -eq "MSSQL") {
 }elseif($activeConfig -eq "PSQL"){
 Set-Location 'C:\Program Files\PostgreSQL\15\bin\';
 $env:PGPASSWORD = $password
-$sqlAZJob = "SELECT job_name, job_target_type FROM  public.\""backup.model.backups\"" where (job_target_type = '15000')"
+$sqlAZJob = "SELECT job_name, job_target_type FROM  public.""backup.model.backups"" where (job_target_type = '15000')"
 $veeam_AZJobresult = @(.\psql -h 127.0.0.1 -U $username -w -d VeeamBackup -c "$sqlAZjob")
 $numberofaz = ($veeam_AZJobresult | Measure-Object -Line).lines
 For ($i = 2; $i -lt $numberofaz -1; $i++){
@@ -274,7 +274,7 @@ Foreach ($veeamjob in $veeamjobs) {
             Set-Location 'C:\Program Files\PostgreSQL\15\bin\';
             $env:PGPASSWORD = $password
             #$cmd = "SELECT job_name, job_type, state, creation_time, end_time, result FROM public.\""backup.model.jobsessions\"" where (job_name like '$veeam_jobname') ORDER BY creation_time DESC LIMIT 3;"
-            $cmd = "SELECT job_name, job_type, state, creation_time, end_time, result FROM (Select *,ROW_NUMBER() OVER (PARTITION BY orig_session_id ORDER BY creation_time DESC) As RowNum from public.\""backup.model.jobsessions\"" Where (job_name like '$veeam_jobname' and job_type != '65') )  AS SubQuery Where RowNum = 1 ORDER BY creation_time desc Limit 3;"
+            $cmd = "SELECT job_name, job_type, state, creation_time, end_time, result FROM (Select *,ROW_NUMBER() OVER (PARTITION BY orig_session_id ORDER BY creation_time DESC) As RowNum from public.""backup.model.jobsessions"" Where (job_name like '$veeam_jobname' and job_type != '65') )  AS SubQuery Where RowNum = 1 ORDER BY creation_time desc Limit 3;"
             $result = @(.\psql -h 127.0.0.1 -U $username -w -d VeeamBackup -c "$cmd")
             
             $veeam_jobhistory[0].job_name = ($result[2] -split "\|",6)[0]
@@ -297,7 +297,7 @@ Foreach ($veeamjob in $veeamjobs) {
             $veeam_jobhistory[2].state = [int]($result[2] -split "\|",6)[2]
 
 
-            $sqlQueryResults = "SELECT name, schedule_enabled FROM public.\""bjobs\"" where (name like '$veeam_jobname');"
+            $sqlQueryResults = "SELECT name, schedule_enabled FROM public.""bjobs"" where (name like '$veeam_jobname');"
             $result = @(.\psql -h 127.0.0.1 -U $username -w -d VeeamBackup -c "$sqlQueryResults")
             $veeam_jobenabled = ($result[2] -split "\|",2 )[1]
 
