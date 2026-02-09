@@ -6,11 +6,11 @@ from lib.generic_plugin import output_and_exit
 
 requests.urllib3.disable_warnings()
 
-def request_json( url ):
+def request_json( url, header=None ):
 	result = None
 
 	try:
-		resp = requests.get( url, verify=False )
+		resp = requests.get( url, headers=header, verify=False )
 	except OSError as e:
 		output_and_exit( 3, 'Error occured while running the check' , repr(e), None)
 	except Exception as e:
