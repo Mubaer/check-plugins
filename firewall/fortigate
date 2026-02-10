@@ -2,6 +2,10 @@
 #
 # Check Fortigate Firewall via API
 #
+program_version=str('1.5.1')
+# Version 1.5.1  (2026-02-10)
+#  add version information for this program itself
+#
 # Version 1.5  (2026-02-10)
 #  use Bearer token authentication instead of url parameter
 #
@@ -48,11 +52,13 @@ cli.add_argument('-H', help='Hostname or IP address', required = True)
 cli.add_argument('--token', help='api access token', required = True)
 cli.add_argument('--port', help='tcp port to connect to (default 443)')
 cli.add_argument('--mode', help='select check mode', required = True,
-        choices=['version', 'health', 'license', 'cpu', 'mem', 'ipsec', 'ap', 'switch'] )
+    choices=['version', 'health', 'license', 'cpu', 'mem', 'ipsec', 'ap', 'switch'] )
 cli.add_argument('--warn', help='warning theshold', type=int)
 cli.add_argument('--crit', help='critical theshold', type=int)
 cli.add_argument('-e', '--exclude', help='Exclude filter. For tunnels: <conn.-name>:<tserial1>[,<tserial2>]. For managed devices: S/N', action = 'append')
-cli.add_argument('-d', '--debug', help='enable debugging output', action="store_true")
+cli.add_argument('-d', '--debug', help='enable debugging output', action="store_true"),
+cli.add_argument('--version',
+    action='version', version='%(prog)s ' + program_version)
 args = cli.parse_args()
 
 # init vars
