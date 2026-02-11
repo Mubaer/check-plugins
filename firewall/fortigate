@@ -2,6 +2,13 @@
 #
 # Check Fortigate Firewall via API
 #
+program_version=str('1.5.1')
+# Version 1.5.1  (2026-02-10)
+#  add version information for this program itself
+#
+# Version 1.5  (2026-02-10)
+#  use Bearer token authentication instead of url parameter
+#
 # Version 1.4 (2024-10-23)
 #  new feature: excludes for switches and accesspoints
 #
@@ -39,17 +46,19 @@ from datetime import datetime
 # parse command line parameters
 
 cli = argparse.ArgumentParser \
-    (description='Check Sophos Cloud Services for Endpoint-Status or Alerts')
+    (description='Check Fortigate Firewalls')
 
 cli.add_argument('-H', help='Hostname or IP address', required = True)
 cli.add_argument('--token', help='api access token', required = True)
 cli.add_argument('--port', help='tcp port to connect to (default 443)')
 cli.add_argument('--mode', help='select check mode', required = True,
-        choices=['version', 'health', 'license', 'cpu', 'mem', 'ipsec', 'ap', 'switch'] )
+    choices=['version', 'health', 'license', 'cpu', 'mem', 'ipsec', 'ap', 'switch'] )
 cli.add_argument('--warn', help='warning theshold', type=int)
 cli.add_argument('--crit', help='critical theshold', type=int)
 cli.add_argument('-e', '--exclude', help='Exclude filter. For tunnels: <conn.-name>:<tserial1>[,<tserial2>]. For managed devices: S/N', action = 'append')
-cli.add_argument('-d', '--debug', help='enable debugging output', action="store_true")
+cli.add_argument('-d', '--debug', help='enable debugging output', action="store_true"),
+cli.add_argument('--version',
+    action='version', version='%(prog)s ' + program_version)
 args = cli.parse_args()
 
 # init vars
@@ -65,9 +74,13 @@ list_filter=args.exclude
 
 if DEBUG: pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
 
+### Generic functions (connect, request)
+### /// Generic functions (connect, request)
+
 def sysinfo( host, token ):
-    url="https://{}/api/v2/monitor/system/status/?access_token={}".format( host, token )
-    jdata=request_json( url )
+    url="https://{}/api/v2/monitor/system/status".format( host )
+    header = { 'Authorization': "Bearer {}".format(token) }
+    jdata=request_json( url, header )
 
     output="Hostname: {}, Model: {}, Version {}, Serial: {}".format( \
         jdata.get('results').get('hostname'), \
@@ -78,10 +91,11 @@ def sysinfo( host, token ):
 def resource( host, token, res, warn, crit):
     interval='10'
     intname="{}-min".format(interval)
-    url="https://{}/api/v2/monitor/system/resource/usage?access_token={}&interval={}-min&resource={}".format(\
-            host, token, interval, res )
+    header = { 'Authorization': "Bearer {}".format(token) }
+    url="https://{}/api/v2/monitor/system/resource/usage?interval={}-min&resource={}".format(\
+            host, interval, res )
 
-    jdata=request_json( url )
+    jdata=request_json( url, header )
     output=''
     perfdata=''
     ind=0
@@ -103,8 +117,9 @@ def resource( host, token, res, warn, crit):
     return (output, rcode, perfdata)
 
 def license( host, token, warn, crit, lic_filter):
-    url="https://{}/api/v2/monitor/license/status/?access_token={}".format( host, token )
-    jdata=request_json( url )
+    header = { 'Authorization': "Bearer {}".format(token) }
+    url="https://{}/api/v2/monitor/license/status".format( host )
+    jdata=request_json( url, header )
     if DEBUG:
         pp.pprint(jdata.get('results'))
 
@@ -159,8 +174,9 @@ def license( host, token, warn, crit, lic_filter):
     return(output, rcode)
 
 def ipsec( host, token, vpn_filter ):
-    url="https://{}/api/v2/monitor/vpn/ipsec/?access_token={}".format( host, token )
-    jdata=request_json( url )
+    header = { 'Authorization': "Bearer {}".format(token) }
+    url="https://{}/api/v2/monitor/vpn/ipsec".format( host )
+    jdata=request_json( url, header )
 
     output = ''
     if DEBUG:
@@ -235,8 +251,9 @@ def ipsec( host, token, vpn_filter ):
     return(output, vpnRC)
 
 def access_points( host, token, element_filter ):
-    url="https://{}/api/v2/monitor/wifi/managed_ap?access_token={}".format( host, token )
-    jdata=request_json( url )
+    header = { 'Authorization': "Bearer {}".format(token) }
+    url="https://{}/api/v2/monitor/wifi/managed_ap".format( host )
+    jdata=request_json( url, header )
 
     output = ''
     ignoreFlag = ''
@@ -282,8 +299,9 @@ def access_points( host, token, element_filter ):
     return(head + output, apRC)
 
 def switches( host, token, element_filter ):
-    url="https://{}/api/v2/monitor/switch-controller/managed-switch/status?access_token={}".format( host, token )
-    jdata=request_json( url )
+    header = { 'Authorization': "Bearer {}".format(token) }
+    url="https://{}/api/v2/monitor/switch-controller/managed-switch/status".format( host )
+    jdata=request_json( url, header )
 
     output = ''
     ignoreFlag = ''

@@ -2,22 +2,36 @@
 
 import requests
 import logging
+from lib.generic_plugin import output_and_exit
 
 requests.urllib3.disable_warnings()
 
-def request_json( url ):
-	resp = requests.get( url, verify=False )
+def request_json( url, header=None ):
 	result = None
 
-	if resp:
-		result = resp.json()
+	try:
+		resp = requests.get( url, headers=header, verify=False )
+	except OSError as e:
+		output_and_exit( 3, 'Error occured while running the check' , repr(e), None)
+	except Exception as e:
+		output_and_exit( 3, 'Exception occured while running the check' , repr(e), None)
+
 	else:
-		logging.error("something went wrong\n\nRESP_HEADER\n{}\nRESP_TEXT\n{}".format( \
-				resp.headers, resp.text ))
+		if resp:
+			result = resp.json()
+		elif resp.status_code == 401:
+			output_and_exit( 3, 'We are not authorized to access the device',
+				   resp.text,
+				   None)
+		else:
+			detailed = "Response Header:\n\n{}\nResponse Text\n\n{}".format( \
+				resp.headers, resp.text )
+			output_and_exit( 3, 'Unexpected answer from device', detailed, None)
+
 	return(result)
 
 def apiRequest( url, method = 'get', verify=True, header=None, data=None ):
-	# BE CAREFUL: we always deal with JSON data here. don't use this 
+	# BE CAREFUL: we always deal with JSON data here. don't use this
 	# function for different data playloads
 	result = None
 	error  = None
@@ -38,4 +52,4 @@ def apiRequest( url, method = 'get', verify=True, header=None, data=None ):
 
 	return(result, error)
 
-# vim: ts=4:noexpandtab:sw=4:sts=4:ai:smartindent:filetype=python
+# vim: ts=4:noexpandtab:sw=4:sts=4:ai:smartindent:filetype=python:nofoldenable
