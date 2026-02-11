@@ -1,0 +1,1 @@
+Get-CimInstance -Query 'Select * from Win32_Service where Name="sppsvc"' | Select-Object ExitCode   
