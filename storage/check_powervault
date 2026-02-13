@@ -2,7 +2,9 @@
 #
 # Check Dell Powervault via API
 #
-program_version=str(0.8)
+program_version=str(1.0)
+# Version 1.0
+#	- first prod version for mode 'pool'
 # Version 0.9
 #	- added mode 'pool'
 # Version 0.8
@@ -28,6 +30,7 @@ program_version=str(0.8)
 #
 
 import requests, json
+import re
 import os, sys
 import argparse
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
@@ -236,35 +239,25 @@ elif args.mode == 'pool':
 
 	infos = {
 			'name':                 [8, 'Name'],
-			'health':               [6,  'Status'],
-			'health-numeric':       [0,  'health-numeric'],
-			'high-threshold':       [0,  'high-threshold'],
-			'middle-threshold':     [0,  'mid-threshold'],
-			'blocksize':            [0,  'blocksize'],
-			'total-size-numeric':   [10, 'total-size-numeric'],
-			'total-avail-numeric':  [10, 'total-avail-numeric'],
+			'health':               [7, 'Status'],
+			'total-size-numeric':   [12, 'Total'],
+			'total-avail-numeric':  [12, 'Available'],
+			'pct_used':             [8, 'Used'],
+			'middle-threshold':     [8, 'Warn@'],
+			'high-threshold':       [8, 'Crit@'],
 			}
 
 	# Print header line
 	# Pad colored status point
-	detail += '  '
+	detail += ' '
 	for item in infos.keys():
 		length = infos[item][0]
-		if length == 0: continue
 		title = infos[item][1]
-		detail += f'{title:{length}}  '
+		detail += f'{title:>{length}}'
 	detail += '\n\n'
 	
 	for entity in jr.get('pools'):
 		items_all+=1
-		entity_rc = entity.get( 'health-numeric' )
-		detail += rcstring( status_map[entity_rc]) + ' '
-		rcode = update_rc( status_map[entity_rc], rcode )
-
-		if status_map[entity_rc] == 0:
-			items_ok+=1
-		else:
-			items_problem+=1
 
 		# Calculate size
 		size  = entity.get( 'total-size-numeric' )
@@ -273,15 +266,53 @@ elif args.mode == 'pool':
 
 		percent_used = 100 - 100*avail/size
 
-		print(f'%used: {percent_used}')
-		for item in infos.keys():
-			length = infos[item][0]
-			if length == 0: continue
-			value = entity.get( item )
-			detail += f'{value:{length}}  '
+		# Fetch thresholds and convert to float (removing ' %')
+		percent_warning  = float( re.sub( r'[^0-9.]', '', entity.get( 'middle-threshold' ) ) )
+		percent_critical = float( re.sub( r'[^0-9.]', '', entity.get( 'high-threshold' ) ) )
 
-		detail += f'used:{percent_used:.0f} %'
+		# Set pool rc according to device output
+		entity_rc = status_map[ entity.get( 'health-numeric' ) ]
+
+		# Overwrite pool status according to usage thresholds
+		usage_rc = check_threshold( percent_used, percent_warning, percent_critical )
+		entity_rc = update_rc( usage_rc, entity_rc )
+
+		# Update global status
+		rcode = update_rc( entity_rc, rcode )
+
+		# Precede pool line with status
+		detail += rcstring( entity_rc )
+
+		# Update status counts
+		if entity_rc == 0:
+			items_ok+=1
+		else:
+			items_problem+=1
+
+		# Print infos using fixed lengths
+		for item in ['name', 'health']:
+			length = infos[item][0]
+			value = entity.get( item )
+			detail += f'{value:>{length}}'
+
+		# Display in TerraBytes
+		dspl_factor=10**12
+		dspl_unit='TB'
+		for item in ['total-size-numeric', 'total-avail-numeric']:
+			length = infos[item][0] - 3
+			value = entity.get( item )
+			detail += f'{value*bsize/dspl_factor:{length}.2f} {dspl_unit}'
+
+		length=7
+		detail += f'{percent_used:{length}.2f}%'
+		detail += f'{percent_warning:{length}.2f}%'
+		detail += f'{percent_critical:{length}.2f}%'
+
 		detail += '\n'
+
+		# copy entity name for readable format-string
+		entity_name = entity.get('name')
+		perfdata += f"'{entity_name}'={percent_used:.2f}%;{percent_warning:.2f};{percent_critical:.2f}; "
 
 	out_text = f'Pools: {items_all} Checked, {items_ok} OK, {items_problem} with problems'
 
