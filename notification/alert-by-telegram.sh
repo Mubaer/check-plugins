@@ -191,7 +191,8 @@ fi
 
 # Are we verbose? Then put a message to syslog...
 if [[ "${VERBOSE-}" == "true" ]] ; then
-	logger "$PROG sends $SUBJECT => Telegram Channel $TELEGRAM_BOT"
+	logger "$PROG sends '$SUBJECT' => Telegram Channel $TELEGRAM_BOT"
+	logger "I was started with: $@"
 fi
 
 # Debug output or not?
