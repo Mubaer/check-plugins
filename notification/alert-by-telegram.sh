@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -eo pipefail
+#set -eo pipefail
 
 # Copyright (C) 2018 Marianne M. Spiller <github@spiller.me>
 #
@@ -197,7 +197,8 @@ fi
 
 # Debug output or not?
 if [[ -z ${DEBUG-} ]]; then
-	CURLARGS=(--silent --output /dev/null)
+	#CURLARGS=(--silent --output /dev/null --fail-with-body)
+	CURLARGS=(--silent --fail-with-body)
 else
 	CURLARGS=(-v)
 	set -x
@@ -205,11 +206,18 @@ else
 fi
 
 # Sanitize Notification Message
-NOTIFICATION_MESSAGE=$( echo "$NOTIFICATION_MESSAGE" | sed 's/</\&lt;/g;s/>/\&gt;/g' )
+NOTIFICATION_MESSAGE=$( echo "$NOTIFICATION_MESSAGE" | sed 's/<</\&lt;\&lt;/g;s/>>/\&gt;\&gt;/g' )
 # And finally, send the message
-$TRANSPORT "${CURLARGS[@]}" \
+curl_output=$( $TRANSPORT "${CURLARGS[@]}" \
 	--data-urlencode "chat_id=${TELEGRAM_CHATID}" \
 	--data-urlencode "text=${NOTIFICATION_MESSAGE}" \
 	--data-urlencode "parse_mode=HTML" \
 	--data-urlencode "disable_web_page_preview=true" \
-	"https://api.telegram.org/bot${TELEGRAM_BOTTOKEN}/sendMessage"
+	"https://api.telegram.org/bot${TELEGRAM_BOTTOKEN}/sendMessage" )
+
+# react on 4xx responses
+if [ $? -eq 22 ] ; then
+	logger "$PROG: curl request failed with statement: $curl_output"
+	exit 22
+fi
+
