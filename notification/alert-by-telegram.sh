@@ -204,6 +204,8 @@ else
 	echo -e "DEBUG MODE!"
 fi
 
+# Sanitize Notification Message
+NOTIFICATION_MESSAGE=$( echo "$NOTIFICATION_MESSAGE" | sed 's/</\&lt;/g;s/>/\&gt;/g' )
 # And finally, send the message
 $TRANSPORT "${CURLARGS[@]}" \
 	--data-urlencode "chat_id=${TELEGRAM_CHATID}" \
