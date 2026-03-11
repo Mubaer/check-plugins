@@ -16,12 +16,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-# Enhanced by Markus Sander <m.sander@mr-daten.de>
+# Enhanced by Markus Sander <m.sander@mr-daten.de> 2026-03-02
 # - IcingaDB compatibility
 # - use of utf-8 symbols
 # - Subject line is IcingaWeb-Link
 # - do not fail on missing symbol definitions
 # - renamed missleading variable names
+# Bugfixes 2026-03-11
+# - handle << >> somehow (translate to HTML entities)
+# - truncate long service outputs (and warn recipient)
+# - change debugging / syslog output
 
 PROG="$(basename "$0")"
 HOSTNAME="$(hostname)"
@@ -178,9 +182,17 @@ EOF
 )
 fi
 
+# Truncate Output length to 3000 bytes
+SHORT_SERVICEOUTPUT=${SERVICEOUTPUT:0:3000}
+
 NOTIFICATION_MESSAGE="$NOTIFICATION_MESSAGE
 
-<code>$SERVICEOUTPUT</code>"
+<code>$SHORT_SERVICEOUTPUT</code>"
+
+if [ "$SHORT_SERVICEOUTPUT" != "$SERVICEOUTPUT" ] ; then
+	NOTIFICATION_MESSAGE+='
+<b>WARNING: Output was too long and has been truncated!</b>'
+fi
 
 # Are there any comments? Put them into the message!
 if [[ -n "${NOTIFICATIONCOMMENT-}" ]]; then
@@ -200,13 +212,14 @@ if [[ -z ${DEBUG-} ]]; then
 	#CURLARGS=(--silent --output /dev/null --fail-with-body)
 	CURLARGS=(--silent --fail-with-body)
 else
-	CURLARGS=(-v)
+	CURLARGS=(-v --fail-with-body)
 	set -x
 	echo -e "DEBUG MODE!"
 fi
 
 # Sanitize Notification Message
 NOTIFICATION_MESSAGE=$( echo "$NOTIFICATION_MESSAGE" | sed 's/<</\&lt;\&lt;/g;s/>>/\&gt;\&gt;/g' )
+
 # And finally, send the message
 curl_output=$( $TRANSPORT "${CURLARGS[@]}" \
 	--data-urlencode "chat_id=${TELEGRAM_CHATID}" \
