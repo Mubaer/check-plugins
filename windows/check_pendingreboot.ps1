@@ -33,6 +33,7 @@
 
 #>
 
+$version = "1.1.0"
 $PendingReboot = "(OK): No reboot required"
 $exitcode = 0
 
@@ -49,9 +50,9 @@ If ((Test-Path -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpd
  $exitcode = 1
 }
 
-If ((Test-Path -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending") -eq $true)
+If ((get-itemproperty -path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component based Servicing").RebootPending)
 {
- $PendingReboot = "(WARNING): Reboot Required"
+$PendingReboot = "(WARNING): Reboot Required"
  $exitcode = 1
 }
 
@@ -62,6 +63,7 @@ If ((Test-Path -Path "HKLM:\SOFTWARE\Microsoft\ServerManager\CurrentRebootAttemp
 }
 
 Write-Host $PendingReboot
-
+Write-Host
+Write-Host "Check-version: " $version
 $host.SetShouldExit($exitcode)
 exit
