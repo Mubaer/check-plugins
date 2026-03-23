@@ -6,6 +6,11 @@
 #
 # Author: Xin Qu
 #
+# Version: 1.4 2026-02-26
+#	+ Support for Disk-Status
+#	- Code consolidation (removed 2 functions)
+#	- removed use of "tr" binary
+#
 # Version: 1.3.1 2024-03-10
 #	Features: Code consolidation
 #
@@ -110,18 +115,6 @@ function set_globalstate() {
 	echo $rcode
 }
 
-function state_string() {
-	local rcode=$1
-	local string
-	case $rcode in
-		0) string='(OK):' ;;
-		1) string='(WARNING):' ;;
-		2) string='(CRITICAL):' ;;
-		3) string='(UNKNOWN):' ;;
-	esac
-	echo $string
-}
-
 function translate_pool_status() {
 	local numcode=$1
 	local version=$2
@@ -213,38 +206,31 @@ function translate_target_status() {
 	echo $rstat
 }
 
+function translate_disk_status() {
+	local statstring=$1
+	local rcode
+
+	case $statstring in
+		'Good') rcode=0 ;;
+		'Warning') rcode=1 ;;
+		'Critical') rcode=2 ;;
+		*) rcode=3 ;;
+	esac
+
+	echo $rcode
+}
+
 function mode_string() {
 	local mode=$1
 	local string
 	case $mode in
 		pool) string='Pools' ;;
 		volume) string='Volumes' ;;
-	target) string='Targets' ;;
+		target) string='Targets' ;;
+		disk) string='Disk' ;;
 	esac
 	echo $string
 }
-
-# generate human readable bytes
-function hr_bytes() {
-	local rawbyte=$1
-	local bstr=Byte
-
-	# more than 10 TB
-	if [ $rawbyte -gt 10000000000000 ] ;then
-		hrbyte="$(( $rawbyte>>40 )) T$bstr"
-
-	# more than 10 GB
-	elif [ $rawbyte -gt 10000000000 ] ;then
-		hrbyte="$(( $rawbyte>>30 )) G$bstr"
-
-	# more than 10 MB
-	elif [ $rawbyte -gt 10000000 ] ;then
-		hrbyte="$(( $rawbyte>>20 )) M$bstr"
-	fi
-
-	echo $hrbyte
-}
-
 
 function storage_byfilter() {
 	# Print Out Data for Elements, filtered by Name
@@ -278,36 +264,88 @@ function storage_byfilter() {
 		percent=$( percent $size_bytes $used_bytes )
 		vol_status=${snmpData[${baseOID}.${id[status]}.$element]}
 
-	if [ $mode == 'pool' ] ; then
-	# Pools have a numeric status
-		vol_status=$( translate_pool_status $vol_status )
-	else
-	# Volumes have a string status. Remove quotes.
-		vol_status=$( echo $vol_status | tr -d '"' )
-	fi
-		
-	# Calc local return code / state text string
-	if [ -n "$warn" -a -n "$crit" ] ;then
-		loop_rcode=$( calc_state ${percent} $warn $crit )
+		if [ $mode == 'pool' ] ; then
+		# Pools have a numeric status
+			vol_status=$( translate_pool_status $vol_status )
+		else
+		# Volumes have a string status. Remove quotes.
+			vol_status=${vol_status//\"}
+		fi
 
-		# Update global plugin return code
-		glob_rcode=$( calc_globalstate ${percent} $warn $crit )
-	fi
+		# Calc local return code / state text string
+		if [ -n "$warn" -a -n "$crit" ] ;then
+			loop_rcode=$( calc_state ${percent} $warn $crit )
 
-	if [ $vol_status != 'Ready' ] ;then
-		# Update global return code
-		glob_rcode=$( set_globalstate 1 )
-	fi
+			# Update global plugin return code
+			glob_rcode=$( calc_globalstate ${percent} $warn $crit )
+		fi
 
-	loop_state=$( state_string $loop_rcode )
-	# text output
-	outmsg+="$name $(( used_bytes>>20 ))/$(( size_bytes>>20 )) MB (${percent}%) Status: $vol_status; "
-	details+="Usage is $loop_state Pool: $name\n"
-	details+="	Size:	$( hr_bytes $size_bytes )\n"
-	details+="	Used:	$( hr_bytes $used_bytes ) (${percent}%)\n"
-	details+="	Status: $vol_status (according to QNAP device)\n\n"
-	perfdata+="$name=${percent}%;$warn;$crit;0;100 "
+		if [ $vol_status != 'Ready' ] ;then
+			# Update global return code
+			glob_rcode=$( set_globalstate 1 )
+		fi
+
+		loop_state=$( state_string $loop_rcode )
+		# text output
+		outmsg+="$name $(( used_bytes>>20 ))/$(( size_bytes>>20 )) MB (${percent}%) Status: $vol_status; "
+		details+="Usage is $loop_state Pool: $name\n"
+		details+="	Size:	$( hr_bytes $size_bytes )\n"
+		details+="	Used:	$( hr_bytes $used_bytes ) (${percent}%)\n"
+		details+="	Status: $vol_status (according to QNAP device)\n\n"
+		perfdata+="$name=${percent}%;$warn;$crit;0;100 "
 	done
+}
+
+function disk_byfilter() {
+	# Print Out Data for Elements, filtered by Name
+	# By default, select all elements
+
+	local filter=$1
+
+	for eName in ${!nameMap[@]}
+	do
+		if [[  "$eName" =~ $filter ]]
+		then
+			outElements+=(${nameMap[$eName]})
+		fi
+	done
+
+	local loop_rcode=0
+	local loop_state
+
+	for element in	${outElements[@]}
+	do
+		local disk_id=${snmpData[${baseOID}.${id[index]}.$element]}
+
+		local disk_status=${snmpData[${baseOID}.${id[status]}.$element]}
+		disk_status=${disk_status//\"} # Remove quotes
+
+		local disk_model=${snmpData[${baseOID}.${id[model]}.$element]}
+		disk_model=${disk_model//\"}
+
+		local disk_sn=${snmpData[${baseOID}.${id[sn]}.$element]}
+		disk_sn=${disk_sn//\"}
+
+		local disk_temperature=${snmpData[${baseOID}.${id[temperature]}.$element]}
+
+		loop_rcode=$( translate_disk_status $disk_status )
+		glob_rcode=$( set_globalstate $loop_rcode )
+
+		loop_state=$( state_string $loop_rcode )
+
+		# text output
+		# detect first entry (comma handling)
+		if [ -z "$outmsg" ] ; then
+			outmsg+="Id $disk_id: $disk_status"
+		else
+			outmsg+=", Id $disk_id: $disk_status"
+		fi
+		details+="$loop_state Id $disk_id, ${disk_temperature}°C, S/N $disk_sn, Model $disk_model is $disk_status\n"
+		perfdata+="$disk_id=$disk_temperature "
+
+	done
+	# Sort output by Disk-ID
+	details=$( echo -e "$details" | sort -n -k 3 )
 }
 
 function raid_byfilter() {
@@ -501,7 +539,7 @@ case $mode in
 		get_snmp_and_process
 		storage_byfilter $filter
 	;;
-	
+
 	volume)
 		baseOID='.1.3.6.1.4.1.55062.1.10.9.1'
 		id[index]=1
@@ -512,7 +550,20 @@ case $mode in
 		get_snmp_and_process
 		storage_byfilter $filter
 	;;
-	
+
+	disk)
+		baseOID='.1.3.6.1.4.1.55062.1.10.2.1'
+		id[index]=1
+		id[name]=2
+		id[model]=4
+		id[sn]=5
+		id[status]=7
+		id[temperature]=8
+		get_snmp_lib nounit
+		process_snmp_index
+		disk_byfilter $filter
+	;;
+
 	raid)
 		baseOID='.1.3.6.1.4.1.55062.1.10.5.1'
 		id[index]=1

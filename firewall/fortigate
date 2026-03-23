@@ -2,7 +2,12 @@
 #
 # Check Fortigate Firewall via API
 #
-program_version=str('1.5.1')
+program_version=str('1.6.0')
+# Version 1.6 (2026-03-05)
+#  New feature: Include filter - handles connections in filter only
+#  Enhancement: For excluded tunnels, display the real state instead of
+#               overwriting it with 'OK'
+#
 # Version 1.5.1  (2026-02-10)
 #  add version information for this program itself
 #
@@ -56,6 +61,7 @@ cli.add_argument('--mode', help='select check mode', required = True,
 cli.add_argument('--warn', help='warning theshold', type=int)
 cli.add_argument('--crit', help='critical theshold', type=int)
 cli.add_argument('-e', '--exclude', help='Exclude filter. For tunnels: <conn.-name>:<tserial1>[,<tserial2>]. For managed devices: S/N', action = 'append')
+cli.add_argument('-i', '--include', help='Include filter. For tunnels: <conn.-name>. For managed devices: S/N', action = 'append')
 cli.add_argument('-d', '--debug', help='enable debugging output', action="store_true"),
 cli.add_argument('--version',
     action='version', version='%(prog)s ' + program_version)
@@ -71,6 +77,7 @@ mode=args.mode
 warn=args.warn
 crit=args.crit
 list_filter=args.exclude
+include_filter=args.include
 
 if DEBUG: pp = pprint.PrettyPrinter(indent=4, compact=True, sort_dicts=True)
 
@@ -173,7 +180,7 @@ def license( host, token, warn, crit, lic_filter):
     output += "\n\n" + details
     return(output, rcode)
 
-def ipsec( host, token, vpn_filter ):
+def ipsec( host, token, vpn_filter, vpn_include ):
     header = { 'Authorization': "Bearer {}".format(token) }
     url="https://{}/api/v2/monitor/vpn/ipsec".format( host )
     jdata=request_json( url, header )
@@ -194,6 +201,9 @@ def ipsec( host, token, vpn_filter ):
     for vpn in sorted( jdata.get('results'), key=lambda x: x.get('name')):
 
         vpnName = vpn.get('name')
+        if vpn_include and (vpnName not in vpn_include):
+            continue
+
         output += '{}\tPeerID: [{}]\n'.format( vpnName, vpn.get('username'))
         tunnel_status = {}
 
@@ -211,18 +221,17 @@ def ipsec( host, token, vpn_filter ):
 
                 tunnel_status.update({ tname: { 'status' : tstatus, 'ignore' : '' } })
 
-                if tunFilter.get(vpnName) and ( str(tserial) in tunFilter.get(vpnName) ):
-
+                if tstatus == 'up':
                     tunnel_status[tname].update( {'rc' :0 } )
-                    tunnel_status[tname].update( {'ignore' : '[ignored]' } )
-
-                    tunnelIgnCount += 1
                 else:
-                    if tstatus == 'up':
-                        tunnel_status[tname].update( {'rc' :0 } )
+                    # Chech for ignore filter
+                    if tunFilter.get(vpnName) and ( str(tserial) in tunFilter.get(vpnName) ):
+                        tunnel_status[tname].update( {'ignore' : '[ignored]' } )
+                        tunnelIgnCount += 1
                     else:
-                        tunnel_status[tname].update( {'rc' :1 } )
                         tunnelErrCount += 1
+ 
+                    tunnel_status[tname].update( {'rc' :1 } )
 
             longest = len( max( tunnel_status.keys(), key=len) )
 
@@ -361,7 +370,7 @@ elif mode=='mem':
 elif mode=='license':
     (out_text,rcode)=license(hostname, args.token, warn, crit, list_filter )
 elif mode=='ipsec':
-    (out_text,rcode)=ipsec( hostname, args.token, list_filter )
+    (out_text,rcode)=ipsec( hostname, args.token, list_filter, include_filter )
 elif mode=='ap':
     (out_text,rcode)=access_points( hostname, args.token, list_filter )
 elif mode=='switch':
