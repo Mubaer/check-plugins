@@ -29,8 +29,8 @@ $exec_time = (get-date).ToString("dd.MM.yyyy HH:mm:ss")
 # Get last results of CU installation
 $cus = Get-WUHistory -Last 30  | Where-Object { $_.Title -match 'umulative' } | Sort-Object -property "Date" -Descending  | Select-Object  Result, Date, Title
 $cus | ForEach-Object{
-if($_.Result -match "Succeeded"){
 $_.Title = $_.Title -replace "ü","ue"
+if($_.Result -match "Succeeded"){
 $_.Result = "(OK) Succeeded"
 }
 
