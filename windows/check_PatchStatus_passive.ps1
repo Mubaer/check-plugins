@@ -19,20 +19,35 @@ if (-not ([System.Management.Automation.PSTypeName]'ServerCertificateValidationC
 }
 [ServerCertificateValidationCallback]::Ignore()
 
+# Enable Server 2016 to establish a secure TLS channel
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12   
+
 $LASTEXITCODE = 0
-$version = "0.9.6"
+$version = "1.1.0" # determine sat and hostname from zones.conf to match Icinga hostname
 $report = @()
 $exec_time = (get-date).ToString("dd.MM.yyyy HH:mm:ss")
 # Get last results of CU installation
-$cus = Get-WUHistory -Last 30  | Where-Object { $_.Title -match 'Cumulative' } | Sort-Object -property "Date" -Descending  | Select-Object  Result, Date, Title
+$cus = Get-WUHistory -Last 30  | Where-Object { $_.Title -match 'umulative' } | Sort-Object -property "Date" -Descending  | Select-Object  Result, Date, Title
 $cus | ForEach-Object{
 if($_.Result -match "Succeeded"){
+$_.Title = $_.Title -replace "ü","ue"
 $_.Result = "(OK) Succeeded"
 }
+
+if($_.Result -match "InProgress"){
+$_.Result = "(WARNING) InProgress"
+}
+
 if($_.Result -match "Failed"){
 $_.Result = "(CRITICAL) Failed"
 }
+
 $report += $_
+}
+
+# Evaluate latest result and compile overall result
+if($cus[0].Result -match "WARNING"){
+$LASTEXITCODE = 1
 }
 if($cus[0].Result -match "CRITICAL"){
 $LASTEXITCODE = 2
@@ -49,12 +64,12 @@ $plugin_output = $plugin_output + "\n" + "\n" + "Check-version: " + $version + "
 $plugin_output = $plugin_output + "This is a passive check. Check now does nothing! It runs once every hour by default."
 
 # Send Output to Icinga2 passive check
-$ICINGA_SERVER = "10.254.244.251"
+$ICINGA_SERVER = ((((Get-Content "C:\ProgramData\icinga2\etc\icinga2\zones.conf" | Select-String "host" ) -split "=")[1]).trimstart(' \"')).trimend('\";')
 $ICINGA_PORT = "5665"
 $API_USER = "passive_checks"
-$API_PASSWORD = "qwertz"
-$HOST_NAME = "mrm-stg-22wsus.mrm.stg"
-$SERVICE_NAME = "passive_test"
+$API_PASSWORD = "aibai7usahCahghi"
+$HOST_NAME = ((((Get-Content "C:\ProgramData\icinga2\etc\icinga2\zones.conf" | Select-String "Object endpoint" ) -split " ")[2]).trimstart(' \"')).trimend('\";')
+$SERVICE_NAME = "Patch Installation Status"
 $STATUS_CODE = $LASTEXITCODE
 $OUTPUT = $plugin_output
 $headers = @{
@@ -70,4 +85,4 @@ $jsonBody = @{
 $uri = "https://${ICINGA_SERVER}:$ICINGA_PORT/v1/actions/process-check-result"
 $creds = New-Object System.Management.Automation.PSCredential($API_USER, (ConvertTo-SecureString $API_PASSWORD -AsPlainText -Force))
 
-Invoke-restmethod -Uri $uri -Method Post -Body $jsonBody -Headers $headers -Credential $creds
+Invoke-RestMethod -Uri $uri -Method Post -Body $jsonBody -Headers $headers -Credential $creds
