@@ -23,7 +23,7 @@ if (-not ([System.Management.Automation.PSTypeName]'ServerCertificateValidationC
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12   
 
 $LASTEXITCODE = 0
-$version = "1.1.0" # determine sat and hostname from zones.conf to match Icinga hostname
+$version = "1.2.0" # determine sat and hostname from zones.conf to match Icinga hostname, use second occurence of Object zone entry
 $report = @()
 $exec_time = (get-date).ToString("dd.MM.yyyy HH:mm:ss")
 # Get last results of CU installation
@@ -68,7 +68,7 @@ $ICINGA_SERVER = ((((Get-Content "C:\ProgramData\icinga2\etc\icinga2\zones.conf"
 $ICINGA_PORT = "5665"
 $API_USER = "passive_checks"
 $API_PASSWORD = "aibai7usahCahghi"
-$HOST_NAME = ((((Get-Content "C:\ProgramData\icinga2\etc\icinga2\zones.conf" | Select-String "Object endpoint" ) -split " ")[2]).trimstart(' \"')).trimend('\";')
+$HOST_NAME = ((((Get-Content "C:\ProgramData\icinga2\etc\icinga2\zones.conf" | Select-String "Object Zone"   | Select-object -index 1 ) -split " ")[2]).trimstart(' \"')).trimend('\";')
 $SERVICE_NAME = "Patch Installation Status"
 $STATUS_CODE = $LASTEXITCODE
 $OUTPUT = $plugin_output
