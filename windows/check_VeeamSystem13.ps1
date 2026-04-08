@@ -36,7 +36,7 @@ try {
 }
 
 Import-Module SQLServer -ErrorAction SilentlyContinue
-$sqlServerName = $env:COMPUTERNAME
+$sqlServerName = [System.Net.Dns]::GetHostName()
 $sqlInstanceName = "VeeamSQL2016"
 $sqlDatabaseName = "VeeamBackup"
 
@@ -48,7 +48,7 @@ $username = get-content -Path "C:\MRDaten\temp.txt" | Select-Object -index 0
 $password = get-content -Path "C:\MRDaten\temp.txt" | Select-Object -index 1
 }
 
-$version = "3.3.5" # prettify output
+$version = "3.3.6" # gethostname for vms with hostname logner than 15 characters
 $timeNow = Get-Date
 
 $OutputContent = "`n"
