@@ -1,4 +1,4 @@
-$version = "1.1.3"
+$version = "1.1.5" # MS changed format of 2025 line
 $LASTEXITCODE = 0
 $warning = 0
 $Port = 8530
@@ -318,7 +318,7 @@ $treffer = 0
 $i = 0
      $request = Invoke-WebRequest "https://support.microsoft.com/en-gb/help/5047442" –UseBasicParsing
 If ($request.StatusCode -eq 200) {
-    $BuildNumber = [regex]::Matches($request.Content, 'href="([a-z0-9-\/]*)">([a-zA-Z]*) ([0-9]{1,2}), ([0-9]{4}).*?(KB[0-9]*) \(OS Build 26100.([0-9]*)\)(?: ([a-zA-Z-]*)<\/a>)?')
+    $BuildNumber = [regex]::Matches($request.Content, 'href="([a-z0-9-\/]*)">([a-zA-Z]*) ([0-9]{1,2}), ([0-9]{4}).*?(KB[0-9]*)\(OS Build 26100.([0-9]*)\)(?: ([a-zA-Z-]*)<\/a>)?')
     if ($BuildNumber.Count -gt 0) {
  
         while ($treffer -eq 0 )
@@ -438,7 +438,8 @@ $result = "(CRITICAL) Overall Status"
 
 Write-host $result
 
-$report | ft -HideTableHeaders | Out-String -Width 9999 -Stream
+$reportend = ($report | ft -HideTableHeaders | Out-String -Width 9999 -Stream) -replace "`r`n","`n"
+$reportend
 
 if($output2016 -like "Current"){
 
