@@ -1,4 +1,4 @@
-$version = "1.1.5" # MS changed format of 2025 line
+$version = "1.1.6" # added Unknown status
 $LASTEXITCODE = 0
 $warning = 0
 $Port = 8530
@@ -99,7 +99,11 @@ If ($request.StatusCode -eq 200) {
           }elseif($info.InstallationStatus -like "Downloaded"){
           $info.InstallationStatus = "     Downloaded"
           $info.ICStatus = "(OK)"
-          }          
+
+          }elseif($info.InstallationStatus -like "Unknown"){
+          $info.InstallationStatus = "     Unknown    " + "      `t"
+          $info.ICStatus = "(UNKNOWN)"
+          }        
           
           $info.UpdateTitle = $kb
           #$info.LegacyName = $update.LegacyName
@@ -197,7 +201,11 @@ If ($request.StatusCode -eq 200) {
           }elseif($info.InstallationStatus -like "Downloaded"){
           $info.InstallationStatus = "Downloaded"
           $info.ICStatus = "(OK)"
-          }          
+
+          }elseif($info.InstallationStatus -like "Unknown"){
+          $info.InstallationStatus = "     Unknown    " + "      `t"
+          $info.ICStatus = "(UNKNOWN)"
+          }        
           
           $info.UpdateTitle = $kb
           #$info.LegacyName = $update.LegacyName
@@ -297,9 +305,12 @@ If ($request.StatusCode -eq 200) {
           }elseif($info.InstallationStatus -like "Downloaded"){
           $info.InstallationStatus = "Downloaded"
           $info.ICStatus = "(OK)"
-          }          
 
-          
+          }elseif($info.InstallationStatus -like "Unknown"){
+          $info.InstallationStatus = "     Unknown    " + "      `t"
+          $info.ICStatus = "(UNKNOWN)"
+          }        
+
           $info.UpdateTitle = $kb
           #$info.LegacyName = $update.LegacyName
           #$info.SecurityBulletins = ($update.SecurityBulletins -join ';')
@@ -397,8 +408,11 @@ If ($request.StatusCode -eq 200) {
           }elseif($info.InstallationStatus -like "Downloaded"){
           $info.InstallationStatus = "Downloaded"
           $info.ICStatus = "(OK)"
-          }          
 
+          }elseif($info.InstallationStatus -like "Unknown"){
+          $info.InstallationStatus = "     Unknown    " + "      `t"
+          $info.ICStatus = "(UNKNOWN)"
+          }        
           
           $info.UpdateTitle = $kb
           #$info.LegacyName = $update.LegacyName
