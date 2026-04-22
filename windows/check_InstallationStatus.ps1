@@ -1,4 +1,4 @@
-$version = "1.1.6" # added Unknown status
+$version = "1.1.8" # added sync status
 $LASTEXITCODE = 0
 $warning = 0
 $Port = 8530
@@ -454,6 +454,21 @@ Write-host $result
 
 $reportend = ($report | ft -HideTableHeaders | Out-String -Width 9999 -Stream) -replace "`r`n","`n"
 $reportend
+
+$sub = $wsus.GetSubscription()
+$lastSyncInfo = $($sub.GetLastSynchronizationInfo()).Result
+if($lastSyncInfo -like "Succeeded"){
+$lastSyncInfo = "Succeeded " + "(OK)" 
+}else{
+$lastSyncInfo = "Warning " + "(WARNING)"
+}
+$lastSyncStart = $($($sub.GetLastSynchronizationInfo()).StartTime).ToString("dd.MM.yyyy HH:mm:ss")
+
+Write-host "Last Sync date/time: " $lastSyncStart
+Write-host "Last Sync status   : " $lastSyncInfo
+Write-host
+Write-host
+
 
 if($output2016 -like "Current"){
 
