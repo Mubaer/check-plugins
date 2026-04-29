@@ -1,4 +1,4 @@
-$version = "1.1.8" # added sync status
+$version = "1.4.0" # corrected weird MS website behaviour
 $LASTEXITCODE = 0
 $warning = 0
 $Port = 8530
@@ -18,19 +18,25 @@ $output2019 = "Current"
 $output2022 = "Current"
 $output2025 = "Current"
 
-$request = Invoke-WebRequest "https://support.microsoft.com/en-gb/help/4000825" –UseBasicParsing
-If ($request.StatusCode -eq 200) {
-    $BuildNumber = [regex]::Matches($request.Content, 'href="([a-z0-9-\/]*)">([a-zA-Z]*) ([0-9]{1,2}), ([0-9]{4}).*?(KB[0-9]*) \(OS Build 14393.([0-9]*)\)(?: ([a-zA-Z-]*)<\/a>)?')
-    if ($BuildNumber.Count -gt 0) {
+$web = New-Object System.Net.WebClient
+$web.Headers.Add("User-Agent", "PowerShell")
+$request16 = $web.DownloadString("https://support.microsoft.com/en-gb/help/4000825")
+$request19 = $web.DownloadString("https://support.microsoft.com/en-gb/help/4464619")
+$request22 = $web.DownloadString("https://support.microsoft.com/en-gb/help/5020032")
+$request25 = $web.DownloadString("https://support.microsoft.com/en-gb/help/5047442")
+
+
+    $BuildNumber16 = [regex]::Matches($request16, 'href="([a-z0-9-\/]*)">([a-zA-Z]*) ([0-9]{1,2}), ([0-9]{4}).*?(KB[0-9]*) \(OS Build 14393.([0-9]*)\)(?: ([a-zA-Z-]*)<\/a>)?')
+    if ($BuildNumber16.Count -gt 0) {
  
         while ($treffer -eq 0 )
         {
-        if ($buildnumber[$i].Groups[7].value -notlike "Out-of-Band") {
+        if ($buildnumber16[$i].Groups[7].value -notlike "Out-of-Band") {
         $CurrentServer2016Raw = [PSCustomObject]@{
             'OS Name'      = "Windows Server 2016"
             'OS Version'   = "14393"
-            'OS build'     = $BuildNumber[$i].Groups[6].Value
-            'KB'           = $BuildNumber[$i].Groups[5].Value
+            'OS build'     = $BuildNumber16[$i].Groups[6].Value
+            'KB'           = $BuildNumber16[$i].Groups[5].Value
             'Title'        = ""
             
             
@@ -43,12 +49,12 @@ If ($request.StatusCode -eq 200) {
 
         while ($treffer -eq 1 )
         {
-        if ($buildnumber[$i].Groups[7].value -notlike "Out-of-Band") {
+        if ($buildnumber16[$i].Groups[7].value -notlike "Out-of-Band") {
         $LastServer2016Raw = [PSCustomObject]@{
             'OS Name'      = "Windows Server 2016"
             'OS Version'   = "14393"
-            'OS build'     = $BuildNumber[$i].Groups[6].Value
-            'KB'           = $BuildNumber[$i].Groups[5].Value
+            'OS build'     = $BuildNumber16[$i].Groups[6].Value
+            'KB'           = $BuildNumber16[$i].Groups[5].Value
             'Title'        = ""
             
             
@@ -60,7 +66,6 @@ If ($request.StatusCode -eq 200) {
         }
 
     }
-}
         $kb = $CurrentServer2016Raw.KB
         $updates = $wsus.GetUpdates($updateScope) | Where-Object{$_.Title -match $kb} #Getting every update where the title matches the $kbnumber
         if (-not $updates){$kb = $lastServer2016Raw.KB; $updates = $wsus.GetUpdates($updateScope) | Where-Object{$_.Title -match $kb};$output2016 = "Last"} #Getting every update where the title matches the $kbnumber}
@@ -118,21 +123,20 @@ If ($request.StatusCode -eq 200) {
         }
      }
 
+
 $treffer = 0
 $i = 0
-     $request = Invoke-WebRequest "https://support.microsoft.com/en-gb/help/4464619" –UseBasicParsing
-If ($request.StatusCode -eq 200) {
-       $BuildNumber = [regex]::Matches($request.Content, 'href="([a-z0-9-\/]*)">([a-zA-Z]*) ([0-9]{1,2}), ([0-9]{4}).*?(KB[0-9]*) \(OS Build 17763.([0-9]*)\)(?: ([a-zA-Z-]*)<\/a>)?')
-    if ($BuildNumber.Count -gt 0) {
+       $BuildNumber19 = [regex]::Matches($request19, 'href="([a-z0-9-\/]*)">([a-zA-Z]*) ([0-9]{1,2}), ([0-9]{4}).*?(KB[0-9]*) \(OS Build 17763.([0-9]*)\)(?: ([a-zA-Z-]*)<\/a>)?')
+    if ($BuildNumber19.Count -gt 0) {
  
         while ($treffer -eq 0 )
         {
-        if ($buildnumber[$i].Groups[7].value -notlike "Out-of-Band") {
+        if ($buildnumber19[$i].Groups[7].value -notlike "Out-of-Band") {
         $CurrentServer2019Raw = [PSCustomObject]@{
             'OS Name'      = "Windows Server 2019"
             'OS Version'   = "17763"
-            'OS build'     = $BuildNumber[$i].Groups[6].Value
-            'KB'           = $BuildNumber[$i].Groups[5].Value
+            'OS build'     = $BuildNumber19[$i].Groups[6].Value
+            'KB'           = $BuildNumber19[$i].Groups[5].Value
             'Title'        = ""
             
             
@@ -145,12 +149,12 @@ If ($request.StatusCode -eq 200) {
 
         while ($treffer -eq 1 )
         {
-        if ($buildnumber[$i].Groups[7].value -notlike "Out-of-Band") {
+        if ($buildnumber19[$i].Groups[7].value -notlike "Out-of-Band") {
         $LastServer2019Raw = [PSCustomObject]@{
             'OS Name'      = "Windows Server 2019"
             'OS Version'   = "17763"
-            'OS build'     = $BuildNumber[$i].Groups[6].Value
-            'KB'           = $BuildNumber[$i].Groups[5].Value
+            'OS build'     = $BuildNumber19[$i].Groups[6].Value
+            'KB'           = $BuildNumber19[$i].Groups[5].Value
             'Title'        = ""
             
             
@@ -162,7 +166,7 @@ If ($request.StatusCode -eq 200) {
         }
 
     }
-}
+
         $kb = $CurrentServer2019Raw.KB
         $updates = $wsus.GetUpdates($updateScope) | Where-Object{$_.Title -match $kb} #Getting every update where the title matches the $kbnumber
         if (-not $updates){$kb = $lastServer2019Raw.KB; $updates = $wsus.GetUpdates($updateScope) | Where-Object{$_.Title -match $kb};$output2019 = "Last"} #Getting every update where the title matches the $kbnumber}
@@ -223,19 +227,17 @@ If ($request.StatusCode -eq 200) {
     
 $treffer = 0
 $i = 0
-     $request = Invoke-WebRequest "https://support.microsoft.com/en-gb/help/5020032" –UseBasicParsing
-If ($request.StatusCode -eq 200) {
-    $BuildNumber = [regex]::Matches($request.Content, 'href="([a-z0-9-\/]*)">([a-zA-Z]*) ([0-9]{1,2}), ([0-9]{4}).*?(KB[0-9]*) \(OS Build 20348.([0-9]*)\)(?: ([a-zA-Z-]*)<\/a>)?')
-    if ($BuildNumber.Count -gt 0) {
+    $BuildNumber22 = [regex]::Matches($request22, 'href="([a-z0-9-\/]*)">([a-zA-Z]*) ([0-9]{1,2}), ([0-9]{4}).*?(KB[0-9]*) \(OS Build 20348.([0-9]*)\)(?: ([a-zA-Z-]*)<\/a>)?')
+    if ($BuildNumber22.Count -gt 0) {
  
         while ($treffer -eq 0 )
         {
-        if ($buildnumber[$i].Groups[7].value -notlike "Out-of-Band") {
+        if ($buildnumber22[$i].Groups[7].value -notlike "Out-of-Band") {
         $CurrentServer2022Raw = [PSCustomObject]@{
             'OS Name'      = "Windows Server 2022"
             'OS Version'   = "20348"
-            'OS build'     = $BuildNumber[$i].Groups[6].Value
-            'KB'           = $BuildNumber[$i].Groups[5].Value
+            'OS build'     = $BuildNumber22[$i].Groups[6].Value
+            'KB'           = $BuildNumber22[$i].Groups[5].Value
             'Title'        = ""
             
             
@@ -248,12 +250,12 @@ If ($request.StatusCode -eq 200) {
 
         while ($treffer -eq 1 )
         {
-        if ($buildnumber[$i].Groups[7].value -notlike "Out-of-Band") {
+        if ($buildnumber22[$i].Groups[7].value -notlike "Out-of-Band") {
         $LastServer2022Raw = [PSCustomObject]@{
             'OS Name'      = "Windows Server 2022"
             'OS Version'   = "20348"
-            'OS build'     = $BuildNumber[$i].Groups[6].Value
-            'KB'           = $BuildNumber[$i].Groups[5].Value
+            'OS build'     = $BuildNumber22[$i].Groups[6].Value
+            'KB'           = $BuildNumber22[$i].Groups[5].Value
             'Title'        = ""
             
             
@@ -265,7 +267,7 @@ If ($request.StatusCode -eq 200) {
         }
 
     }
-}
+
         $kb = $CurrentServer2022Raw.KB
         $updates = $wsus.GetUpdates($updateScope) | Where-Object{$_.Title -match $kb} #Getting every update where the title matches the $kbnumber
         if (-not $updates){$kb = $lastServer2022Raw.KB; $updates = $wsus.GetUpdates($updateScope) | Where-Object{$_.Title -match $kb};$output2022 = "Last"} #Getting every update where the title matches the $kbnumber}
@@ -327,19 +329,17 @@ If ($request.StatusCode -eq 200) {
 
 $treffer = 0
 $i = 0
-     $request = Invoke-WebRequest "https://support.microsoft.com/en-gb/help/5047442" –UseBasicParsing
-If ($request.StatusCode -eq 200) {
-    $BuildNumber = [regex]::Matches($request.Content, 'href="([a-z0-9-\/]*)">([a-zA-Z]*) ([0-9]{1,2}), ([0-9]{4}).*?(KB[0-9]*)\(OS Build 26100.([0-9]*)\)(?: ([a-zA-Z-]*)<\/a>)?')
-    if ($BuildNumber.Count -gt 0) {
+    $BuildNumber25 = [regex]::Matches($request25, 'href="([a-z0-9-\/]*)">([a-zA-Z]*) ([0-9]{1,2}), ([0-9]{4}).*?(KB[0-9]*)\(OS Build 26100.([0-9]*)\)(?: ([a-zA-Z-]*)<\/a>)?')
+    if ($BuildNumber25.Count -gt 0) {
  
         while ($treffer -eq 0 )
         {
-        if ($buildnumber[$i].Groups[7].value -notlike "Out-of-Band") {
+        if ($buildnumber25[$i].Groups[7].value -notlike "Out-of-Band") {
         $CurrentServer2025Raw = [PSCustomObject]@{
             'OS Name'      = "Windows Server 2025"
             'OS Version'   = "26100"
-            'OS build'     = $BuildNumber[$i].Groups[6].Value
-            'KB'           = $BuildNumber[$i].Groups[5].Value
+            'OS build'     = $BuildNumber25[$i].Groups[6].Value
+            'KB'           = $BuildNumber25[$i].Groups[5].Value
             'Title'        = ""
             
             
@@ -352,12 +352,12 @@ If ($request.StatusCode -eq 200) {
 
         while ($treffer -eq 1 )
         {
-        if ($buildnumber[$i].Groups[7].value -notlike "Out-of-Band") {
+        if ($buildnumber25[$i].Groups[7].value -notlike "Out-of-Band") {
         $LastServer2025Raw = [PSCustomObject]@{
             'OS Name'      = "Windows Server 2025"
             'OS Version'   = "26100"
-            'OS build'     = $BuildNumber[$i].Groups[6].Value
-            'KB'           = $BuildNumber[$i].Groups[5].Value
+            'OS build'     = $BuildNumber25[$i].Groups[6].Value
+            'KB'           = $BuildNumber25[$i].Groups[5].Value
             'Title'        = ""
             
             
@@ -369,7 +369,6 @@ If ($request.StatusCode -eq 200) {
         }
 
     }
-}
         $kb = $CurrentServer2025Raw.KB
         $updates = $wsus.GetUpdates($updateScope) | Where-Object{$_.Title -match $kb} #Getting every update where the title matches the $kbnumber
         if (-not $updates){$kb = $lastServer2025Raw.KB; $updates = $wsus.GetUpdates($updateScope) | Where-Object{$_.Title -match $kb};$output2025 = "Last"} #Getting every update where the title matches the $kbnumber}
